@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Kiro">
+  <rect width="64" height="64" rx="14" fill="#8b5cf6"/>
+  <path fill="#fff" d="M17 53V24.5C17 15.9 23.4 10 32 10s15 5.9 15 14.5V53l-6-4.6-5.3 4.6L32 48.4 28.3 53 23 48.4 17 53Z"/>
+  <circle cx="26.3" cy="29.8" r="3.2" fill="#8b5cf6"/>
+  <circle cx="37.7" cy="29.8" r="3.2" fill="#8b5cf6"/>
+</svg>

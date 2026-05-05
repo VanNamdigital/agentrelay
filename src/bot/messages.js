@@ -1,0 +1,206 @@
+const store = require('../config/store');
+const { ALLOWED_LANGUAGES } = require('../config/botChannels');
+
+const MESSAGES = {
+    en: {
+        'button.projects': 'Projects',
+        'button.providers': 'Choose CLI',
+        'button.models': 'Choose model',
+        'button.status': 'Status',
+        'button.cancel': 'Cancel',
+        'button.logs': 'Logs',
+        'button.settings': 'Settings',
+        'button.main': 'Main Menu',
+        'button.back': 'Back',
+        'bot.notAllowed': 'You are not allowed to use this bot.',
+        'bot.noProviders': 'No enabled CLI providers. Configure providers in Admin UI.',
+        'bot.main': '<b>AgentRelay</b>\n1. Choose project\n2. Choose CLI\n3. Choose model\n4. Send prompt\n\n{providers}',
+        'bot.noProjects': 'No projects configured. Add project paths in Admin UI.',
+        'bot.selectProject': '<b>Select project</b>{current}',
+        'bot.currentProject': '\nCurrent: <code>{project}</code>',
+        'bot.noModels': 'No enabled models for this provider. Enable at least one model in Admin UI.',
+        'bot.selectModel': '<b>{provider}</b>\nSelect an enabled model.',
+        'bot.statusTitle': '<b>Status</b>',
+        'bot.provider': 'Provider',
+        'bot.model': 'Model',
+        'bot.project': 'Project',
+        'bot.running': 'Running',
+        'bot.notSelected': 'not selected',
+        'bot.yes': 'yes',
+        'bot.no': 'no',
+        'bot.noLogs': 'No logs found.',
+        'bot.adminUi': 'Open Admin UI: http://127.0.0.1:3456/dashboard/',
+        'bot.noTask': 'No task is running.',
+        'bot.cancelRequested': 'Cancellation requested.',
+        'bot.projectNotFound': 'Project not found.',
+        'bot.providerDisabled': 'This provider is currently disabled or not ready.',
+        'bot.modelDisabled': 'This model is no longer enabled. Choose another model.',
+        'bot.chooseProject': 'Choose a project before running a prompt.',
+        'bot.taskNotImplemented': 'Task execution for this provider is not implemented yet.',
+        'bot.taskAlreadyRunning': 'A task is already running. Use Status or Cancel.',
+        'bot.failedStart': 'Failed to start CLI: {error}',
+        'bot.taskCancelled': 'Task cancelled after {minutes} minutes.',
+        'bot.taskFinished': 'Task finished with exit code {code}.',
+        'bot.started': 'Started {provider} with model <code>{model}</code>.\nPID: <code>{pid}</code>',
+        'bot.modelNotFound': 'Model not found or disabled.',
+        'bot.modelSelected': 'Model selected: <code>{model}</code>\nSend a prompt to run the task.'
+    },
+    vi: {
+        'button.projects': 'Dự án',
+        'button.providers': 'Chọn CLI',
+        'button.models': 'Chọn model',
+        'button.status': 'Trạng thái',
+        'button.cancel': 'Hủy',
+        'button.logs': 'Nhật ký',
+        'button.settings': 'Cài đặt',
+        'button.main': 'Menu chính',
+        'button.back': 'Quay lại',
+        'bot.notAllowed': 'Bạn không có quyền dùng bot này.',
+        'bot.noProviders': 'Chưa có CLI provider nào được bật. Hãy cấu hình trong Admin UI.',
+        'bot.main': '<b>AgentRelay</b>\n1. Chọn project\n2. Chọn CLI\n3. Chọn model\n4. Gửi prompt\n\n{providers}',
+        'bot.noProjects': 'Chưa có project nào. Hãy thêm project path trong Admin UI.',
+        'bot.selectProject': '<b>Chọn project</b>{current}',
+        'bot.currentProject': '\nHiện tại: <code>{project}</code>',
+        'bot.noModels': 'Provider này chưa có model được bật. Hãy bật ít nhất một model trong Admin UI.',
+        'bot.selectModel': '<b>{provider}</b>\nChọn model được phép dùng.',
+        'bot.statusTitle': '<b>Trạng thái</b>',
+        'bot.provider': 'Provider',
+        'bot.model': 'Model',
+        'bot.project': 'Project',
+        'bot.running': 'Đang chạy',
+        'bot.notSelected': 'chưa chọn',
+        'bot.yes': 'có',
+        'bot.no': 'không',
+        'bot.noLogs': 'Chưa có log.',
+        'bot.adminUi': 'Mở Admin UI: http://127.0.0.1:3456/dashboard/',
+        'bot.noTask': 'Không có task nào đang chạy.',
+        'bot.cancelRequested': 'Đã yêu cầu hủy task.',
+        'bot.projectNotFound': 'Không tìm thấy project.',
+        'bot.providerDisabled': 'Provider này đang bị tắt hoặc chưa sẵn sàng.',
+        'bot.modelDisabled': 'Model này không còn được bật. Hãy chọn model khác.',
+        'bot.chooseProject': 'Hãy chọn project trước khi chạy prompt.',
+        'bot.taskNotImplemented': 'Provider này chưa được implement chạy task.',
+        'bot.taskAlreadyRunning': 'Đang có task chạy. Dùng Trạng thái hoặc Hủy.',
+        'bot.failedStart': 'Không thể start CLI: {error}',
+        'bot.taskCancelled': 'Task đã bị hủy sau {minutes} phút.',
+        'bot.taskFinished': 'Task kết thúc với exit code {code}.',
+        'bot.started': 'Đã start {provider} với model <code>{model}</code>.\nPID: <code>{pid}</code>',
+        'bot.modelNotFound': 'Không tìm thấy model hoặc model đã bị tắt.',
+        'bot.modelSelected': 'Đã chọn model: <code>{model}</code>\nGửi prompt để chạy task.'
+    },
+    ru: {
+        'button.projects': 'Проекты',
+        'button.providers': 'CLI',
+        'button.models': 'Модели',
+        'button.status': 'Статус',
+        'button.cancel': 'Отмена',
+        'button.logs': 'Журналы',
+        'button.settings': 'Настройки',
+        'button.main': 'Главное меню',
+        'button.back': 'Назад',
+        'bot.notAllowed': 'У вас нет доступа к этому боту.',
+        'bot.noProviders': 'Нет включенных CLI провайдеров. Настройте их в Admin UI.',
+        'bot.main': '<b>AgentRelay</b>\nВыберите провайдера или управляйте проектом/сессией.\n\n{providers}',
+        'bot.noProjects': 'Проекты не настроены. Добавьте пути проектов в Admin UI.',
+        'bot.selectProject': '<b>Выберите проект</b>{current}',
+        'bot.currentProject': '\nТекущий: <code>{project}</code>',
+        'bot.noModels': 'Для этого провайдера нет включенных моделей. Включите модель в Admin UI.',
+        'bot.selectModel': '<b>{provider}</b>\nВыберите доступную модель.',
+        'bot.statusTitle': '<b>Статус</b>',
+        'bot.provider': 'Провайдер',
+        'bot.model': 'Модель',
+        'bot.project': 'Проект',
+        'bot.running': 'Выполняется',
+        'bot.notSelected': 'не выбрано',
+        'bot.yes': 'да',
+        'bot.no': 'нет',
+        'bot.noLogs': 'Журналы не найдены.',
+        'bot.adminUi': 'Откройте Admin UI: http://127.0.0.1:3456/dashboard/',
+        'bot.noTask': 'Нет выполняющихся задач.',
+        'bot.cancelRequested': 'Запрошена отмена.',
+        'bot.projectNotFound': 'Проект не найден.',
+        'bot.providerDisabled': 'Этот провайдер отключен или не готов.',
+        'bot.modelDisabled': 'Эта модель больше не включена. Выберите другую.',
+        'bot.chooseProject': 'Выберите проект перед запуском prompt.',
+        'bot.taskNotImplemented': 'Запуск задач для этого провайдера еще не реализован.',
+        'bot.taskAlreadyRunning': 'Задача уже выполняется. Используйте Статус или Отмена.',
+        'bot.failedStart': 'Не удалось запустить CLI: {error}',
+        'bot.taskCancelled': 'Задача отменена через {minutes} минут.',
+        'bot.taskFinished': 'Задача завершена с кодом {code}.',
+        'bot.started': 'Запущен {provider} с моделью <code>{model}</code>.\nPID: <code>{pid}</code>',
+        'bot.modelNotFound': 'Модель не найдена или отключена.',
+        'bot.modelSelected': 'Выбрана модель: <code>{model}</code>\nОтправьте prompt для запуска задачи.'
+    },
+    zh: {
+        'button.projects': '项目',
+        'button.providers': '选择 CLI',
+        'button.models': '选择模型',
+        'button.status': '状态',
+        'button.cancel': '取消',
+        'button.logs': '日志',
+        'button.settings': '设置',
+        'button.main': '主菜单',
+        'button.back': '返回',
+        'bot.notAllowed': '你没有权限使用此机器人。',
+        'bot.noProviders': '没有启用的 CLI 提供商。请在 Admin UI 中配置。',
+        'bot.main': '<b>AgentRelay</b>\n选择提供商或管理项目/会话。\n\n{providers}',
+        'bot.noProjects': '尚未配置项目。请在 Admin UI 中添加项目路径。',
+        'bot.selectProject': '<b>选择项目</b>{current}',
+        'bot.currentProject': '\n当前: <code>{project}</code>',
+        'bot.noModels': '该提供商没有启用的模型。请在 Admin UI 中启用模型。',
+        'bot.selectModel': '<b>{provider}</b>\n选择一个已启用模型。',
+        'bot.statusTitle': '<b>状态</b>',
+        'bot.provider': '提供商',
+        'bot.model': '模型',
+        'bot.project': '项目',
+        'bot.running': '运行中',
+        'bot.notSelected': '未选择',
+        'bot.yes': '是',
+        'bot.no': '否',
+        'bot.noLogs': '没有日志。',
+        'bot.adminUi': '打开 Admin UI: http://127.0.0.1:3456/dashboard/',
+        'bot.noTask': '没有正在运行的任务。',
+        'bot.cancelRequested': '已请求取消。',
+        'bot.projectNotFound': '找不到项目。',
+        'bot.providerDisabled': '此提供商已禁用或未就绪。',
+        'bot.modelDisabled': '此模型已不再启用。请选择其他模型。',
+        'bot.chooseProject': '运行 prompt 前请先选择项目。',
+        'bot.taskNotImplemented': '此提供商的任务执行尚未实现。',
+        'bot.taskAlreadyRunning': '已有任务正在运行。请使用状态或取消。',
+        'bot.failedStart': '启动 CLI 失败: {error}',
+        'bot.taskCancelled': '任务在 {minutes} 分钟后已取消。',
+        'bot.taskFinished': '任务完成，退出码 {code}。',
+        'bot.started': '已启动 {provider}，模型 <code>{model}</code>。\nPID: <code>{pid}</code>',
+        'bot.modelNotFound': '模型不存在或已禁用。',
+        'bot.modelSelected': '已选择模型: <code>{model}</code>\n发送 prompt 即可运行任务。'
+    }
+};
+
+function language() {
+    const configured = store.getSetting('system_language', 'en');
+    return ALLOWED_LANGUAGES.has(configured) ? configured : 'en';
+}
+
+function text(key, params = {}) {
+    const messages = MESSAGES[language()] || MESSAGES.en;
+    let value = messages[key] || MESSAGES.en[key] || key;
+    for (const [name, replacement] of Object.entries(params)) {
+        value = value.replaceAll(`{${name}}`, String(replacement));
+    }
+    return value;
+}
+
+function button(key) {
+    return text(`button.${key}`);
+}
+
+function matchesButton(input, key) {
+    const value = String(input || '');
+    return Object.values(MESSAGES).some(messages => messages[`button.${key}`] === value);
+}
+
+module.exports = {
+    text,
+    button,
+    matchesButton
+};

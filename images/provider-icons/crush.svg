@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Crush">
+  <rect width="64" height="64" rx="14" fill="#fff1f2"/>
+  <path fill="#e11d48" d="M32 55S13.8 44.1 8.2 32.8C3.4 23 8.6 14 18.7 14c5.1 0 8.7 2.6 10.7 5.5C31.4 16.6 35 14 40.1 14c10.1 0 15.3 9 10.5 18.8C45 44.1 32 55 32 55Z"/>
+  <path fill="#fff" d="M22.8 25.8h5v5.3h5.6v-5.3h5v15.3h-5v-5.7h-5.6v5.7h-5V25.8Z"/>
+</svg>

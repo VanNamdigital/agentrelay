@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.19
+          cache: npm
+
+      - name: Install backend dependencies
+        run: npm ci
+
+      - name: Install dashboard dependencies
+        run: npm --prefix dashboard ci
+
+      - name: Syntax check
+        run: npm run check
+
+      - name: Test
+        run: npm test
+
+      - name: Build dashboard
+        run: npm run build:dashboard
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=moderate
+
+      - name: Audit dashboard dependencies
+        run: npm --prefix dashboard audit --audit-level=moderate

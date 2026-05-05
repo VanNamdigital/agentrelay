@@ -1,0 +1,50 @@
+{
+  "name": "@vannamdigital/agentrelay",
+  "version": "2.0.0",
+  "description": "AgentRelay - Multi-provider AI CLI controller with Telegram bot and admin dashboard",
+  "license": "MIT",
+  "main": "src/index.js",
+  "bin": {
+    "agentrelay": "bin/agentrelay.js"
+  },
+  "files": [
+    ".env.example",
+    "bin/",
+    "dashboard/",
+    "images/",
+    "public/dashboard/",
+    "scripts/",
+    "src/",
+    "LICENSE",
+    "README.md",
+    "SECURITY.md",
+    "reset-admin.js",
+    "setup-dashboard.bat",
+    "setup-dashboard.sh"
+  ],
+  "scripts": {
+    "cli": "node bin/agentrelay.js",
+    "prestart": "node scripts/ensure-dashboard.js",
+    "start": "node src/index.js",
+    "test": "vitest run",
+    "check": "node --check src/index.js && node --check src/server/index.js && node --check src/server/routes/api.js && node --check src/bot/index.js && node --check src/cli/detector.js",
+    "install:dashboard": "npm --prefix dashboard install",
+    "setup": "npm install && npm run install:dashboard && npm run build:dashboard",
+    "build:dashboard": "npm --prefix dashboard run build"
+  },
+  "engines": {
+    "node": ">=20.19"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^12.9.0",
+    "cors": "^2.8.6",
+    "dotenv": "^16.4.5",
+    "express": "^4.22.1",
+    "express-session": "^1.19.0",
+    "telegraf": "^4.16.3"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.5"
+  }
+}

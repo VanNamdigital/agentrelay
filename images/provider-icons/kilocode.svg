@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Kilo Code">
+  <rect width="64" height="64" rx="14" fill="#fef08a"/>
+  <rect x="12" y="12" width="40" height="40" rx="3" fill="#111827"/>
+  <path fill="#fef08a" d="M20 20h5v10.3L32.3 20h6L30 31.3 39.5 44h-6.2l-6.4-8.7-1.9 2.4V44h-5V20Zm24 0h5v5h-5v-5Zm0 9h5v15h-5V29Z"/>
+</svg>
