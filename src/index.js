@@ -1,7 +1,9 @@
 const path = require('path');
 const dotenv = require('dotenv');
+const { ensureEnv } = require('./ensureEnv');
 const { envPath } = require('./runtimePaths');
 
+ensureEnv();
 dotenv.config({ path: envPath });
 
 const { startServer } = require('./server');

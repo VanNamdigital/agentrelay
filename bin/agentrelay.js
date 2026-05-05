@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 
-const crypto = require('crypto');
-const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
+const { ensureEnv } = require('../src/ensureEnv');
 
 const rootDir = path.join(__dirname, '..');
 
@@ -19,26 +18,6 @@ Usage:
   agentrelay --no-open   Start without opening the browser
   agentrelay --help      Show this help
 `);
-}
-
-function ensureEnv() {
-    const { envPath, runtimeRoot } = require('../src/runtimePaths');
-    fs.mkdirSync(runtimeRoot, { recursive: true });
-    if (fs.existsSync(envPath)) return;
-
-    const secret = crypto.randomBytes(32).toString('hex');
-    const content = [
-        `SESSION_SECRET=${secret}`,
-        'ADMIN_PORT=3456',
-        'HOST=127.0.0.1',
-        'ALLOW_LAN=false',
-        'AUTH_COOKIE_SECURE=false',
-        'SYSTEM_LANGUAGE=en',
-        ''
-    ].join('\n');
-
-    fs.writeFileSync(envPath, content, { encoding: 'utf8', flag: 'wx' });
-    console.log(`Created local config at ${envPath}`);
 }
 
 function openBrowser(url) {

@@ -35,6 +35,7 @@ export const api = {
   changePassword: (payload) => request('/auth/change-password', { method: 'POST', body: payload }),
   logout: () => request('/auth/logout', { method: 'POST' }),
 
+  getUpdateInfo: () => request('/app/update'),
   dashboard: () => request('/dashboard'),
   getBotConfig: () => request('/bot/config'),
   saveBotConfig: (payload) => request('/bot/config', { method: 'PATCH', body: payload }),

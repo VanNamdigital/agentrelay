@@ -16,6 +16,7 @@ const authMiddleware = require('../middleware/auth');
 const { hashPassword, verifyPassword } = require('../../auth/password');
 const { redactSecrets } = require('../../settingsConfig');
 const { logDir } = require('../../runtimePaths');
+const { getUpdateInfo } = require('../../updateCheck');
 
 const router = Router();
 const LOG_PATH = path.join(logDir, 'app.log');
@@ -370,6 +371,10 @@ router.post('/auth/logout', (req, res) => {
 });
 
 router.use(authMiddleware.requireAuth);
+
+router.get('/app/update', async (req, res) => {
+    res.json(await getUpdateInfo());
+});
 
 router.get('/dashboard', (req, res) => {
     const providers = store.getCliProviders().map(serializeProvider);

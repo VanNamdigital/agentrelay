@@ -1,6 +1,6 @@
 {
   "name": "@vannamdigital/agentrelay",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "AgentRelay - Multi-provider AI CLI controller with Telegram bot and admin dashboard",
   "license": "MIT",
   "main": "src/index.js",
@@ -27,7 +27,7 @@
     "prestart": "node scripts/ensure-dashboard.js",
     "start": "node src/index.js",
     "test": "vitest run",
-    "check": "node --check src/index.js && node --check src/server/index.js && node --check src/server/routes/api.js && node --check src/bot/index.js && node --check src/cli/detector.js",
+    "check": "node --check bin/agentrelay.js && node --check src/index.js && node --check src/ensureEnv.js && node --check src/updateCheck.js && node --check src/server/index.js && node --check src/server/routes/api.js && node --check src/bot/index.js && node --check src/cli/detector.js",
     "install:dashboard": "npm --prefix dashboard install",
     "setup": "npm install && npm run install:dashboard && npm run build:dashboard",
     "build:dashboard": "npm --prefix dashboard run build"

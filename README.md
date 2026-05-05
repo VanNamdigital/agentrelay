@@ -141,6 +141,28 @@ agentrelay
 
 Global installs store runtime config, SQLite data, and logs in `~/.agentrelay` by default. Set `AGENTRELAY_HOME` before running `agentrelay` if you want a different data directory.
 
+## Update Notifications
+
+The dashboard checks npm for a newer `@vannamdigital/agentrelay` version after login. When a newer package is available, it shows an update banner with the exact command to run, then the user should restart AgentRelay.
+
+For global installs:
+
+```bash
+npm install -g @vannamdigital/agentrelay@latest
+agentrelay
+```
+
+For cloned repo installs, pull the latest source, reinstall dependencies, rebuild the dashboard, and restart:
+
+```bash
+git pull
+npm install
+npm run build:dashboard
+npm start
+```
+
+Set `UPDATE_CHECK_ENABLED=false` to disable the npm update check.
+
 ## Configure `.env`
 
 Create `.env` from `.env.example`, then set at least:
