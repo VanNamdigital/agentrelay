@@ -13,6 +13,7 @@ import {
   SquareTerminal,
   X
 } from 'lucide-react';
+import { api } from '../api';
 import { useI18n } from '../i18n';
 import styles from './Layout.module.css';
 
