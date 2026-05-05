@@ -2,7 +2,6 @@
 
 const path = require('path');
 const { spawn } = require('child_process');
-const { ensureEnv } = require('../src/ensureEnv');
 
 const rootDir = path.join(__dirname, '..');
 
@@ -51,6 +50,7 @@ async function run() {
 
     process.env.AGENTRELAY_GLOBAL = 'true';
     process.chdir(rootDir);
+    const { ensureEnv } = require('../src/ensureEnv');
     ensureEnv();
     require('../scripts/ensure-dashboard');
 

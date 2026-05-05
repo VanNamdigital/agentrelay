@@ -163,6 +163,16 @@ npm start
 
 Set `UPDATE_CHECK_ENABLED=false` to disable the npm update check.
 
+If you installed version `2.0.1` globally, migrate any legacy runtime data once before updating:
+
+```powershell
+$legacy = Join-Path (npm root -g) '@vannamdigital\agentrelay'
+$target = Join-Path $HOME '.agentrelay'
+New-Item -ItemType Directory -Force -Path $target
+if ((Test-Path "$legacy\.env") -and -not (Test-Path "$target\.env")) { Copy-Item "$legacy\.env" "$target\.env" }
+if ((Test-Path "$legacy\data") -and -not (Test-Path "$target\data")) { Copy-Item "$legacy\data" "$target\data" -Recurse }
+```
+
 ## Configure `.env`
 
 Create `.env` from `.env.example`, then set at least:
