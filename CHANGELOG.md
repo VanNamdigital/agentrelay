@@ -6,6 +6,14 @@ This project follows the spirit of Keep a Changelog and uses semantic versioning
 
 ## Unreleased
 
+## 2.0.6 - 2026-05-06
+
+### Fixed
+
+- Fixed global installs where supported CLI providers could scan as detected but remain unusable because the global runtime database had no enabled models.
+- Made `Scan local CLI` seed supported provider models automatically, including Codex defaults, Claude/Gemini fallback `default`, Kiro `auto`, Kilo Code full model IDs, and Command Code `default`.
+- Auto-enabled newly scanned runnable providers when their previous global runtime entry had no model configuration.
+
 ## 2.0.5 - 2026-05-06
 
 ### Added

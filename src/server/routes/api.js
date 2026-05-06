@@ -281,6 +281,69 @@ function validateProviderCanEnable(key, command) {
     return null;
 }
 
+async function detectProviderModels(key, command) {
+    if (key === 'opencode') return detector.fetchOpenCodeModels(command || 'opencode');
+    if (key === 'codex') return detector.fetchCodexModels();
+    if (key === 'claude') return detector.fetchClaudeModelSuggestions();
+    if (key === 'gemini') return detector.fetchGeminiModelSuggestions();
+    if (key === 'kiro') return detector.fetchKiroModels(command || 'kiro-cli');
+    if (key === 'kilocode') return detector.fetchKiloCodeModels(command || 'kilo');
+    if (key === 'command-code') return detector.fetchCommandCodeModels();
+    return [];
+}
+
+function fallbackModelsForProvider(key) {
+    if (key === 'claude' || key === 'gemini') return ['default'];
+    if (key === 'kilocode') return ['kilo/kilo-auto/free'];
+    if (key === 'kiro') return ['auto'];
+    if (key === 'command-code') return ['default'];
+    return [];
+}
+
+function preferredDefaultModel(key, models) {
+    const preferred = {
+        codex: 'gpt-5.5',
+        opencode: 'opencode/big-pickle',
+        claude: 'default',
+        gemini: 'default',
+        kiro: 'auto',
+        kilocode: 'kilo/kilo-auto/free',
+        'command-code': 'default'
+    }[key];
+    if (preferred && models.includes(preferred)) return preferred;
+    return models[0] || '';
+}
+
+function shouldReplaceDefaultModel(key, currentDefault) {
+    if (!currentDefault) return true;
+    const current = String(currentDefault.model_name || '').trim();
+    if (!current) return true;
+    if (key === 'kiro' && /\s/.test(current)) return true;
+    if (key === 'kilocode' && ['balanced', 'anthropic/claude-sonnet-latest'].includes(current)) return true;
+    return false;
+}
+
+async function seedProviderModels(key, command) {
+    let detected = await detectProviderModels(key, command);
+    if (detected.length === 0) detected = fallbackModelsForProvider(key);
+    const uniqueModels = [...new Set(detected.map(model => String(model || '').trim()).filter(Boolean))];
+    const added = [];
+    for (const model of uniqueModels) {
+        const id = store.addModel(key, model, model, ['claude', 'gemini', 'command-code'].includes(key) ? 'default' : 'detected');
+        store.updateModelByKey(key, id, { enabled: 1 });
+        added.push({ model_name: model, id });
+    }
+
+    const defaultName = preferredDefaultModel(key, uniqueModels);
+    const currentDefault = store.getDefaultModel(key);
+    if (defaultName && shouldReplaceDefaultModel(key, currentDefault)) {
+        const model = store.getModels(key).find(item => item.model_name === defaultName);
+        if (model) store.setDefaultModel(key, model.id);
+    }
+
+    return added;
+}
+
 function readLogLines({ filter = 'all', search = '', limit = 500 } = {}) {
     let lines = [];
     if (fs.existsSync(LOG_PATH)) {
@@ -583,6 +646,14 @@ router.get('/cli-providers', (req, res) => {
 router.post('/cli-providers/scan', authMiddleware.requireChangePassword, async (req, res) => {
     try {
         const results = await detector.scanAndSave();
+        for (const result of results) {
+            if (!result.found || !['opencode', 'codex', 'claude', 'gemini', 'kiro', 'kilocode', 'command-code'].includes(result.key)) continue;
+            const hadModels = store.getModels(result.key).length > 0;
+            await seedProviderModels(result.key, result.command);
+            if (!hadModels && store.getEnabledModels(result.key).length > 0) {
+                store.updateCliProviderByKey(result.key, { enabled: 1 });
+            }
+        }
         res.json({ success: true, results, providers: store.getCliProviders().map(serializeProvider) });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message || 'CLI scan failed' });
@@ -646,20 +717,8 @@ router.post('/cli-providers/:key/models/detect', authMiddleware.requireChangePas
     const key = req.params.key;
     if (!detector.ALLOWED_PROVIDER_KEYS.has(key)) return res.status(404).json({ success: false, error: 'Provider not found' });
     const provider = store.getCliProviderByKey(key);
-    let detected = [];
-    if (key === 'opencode') detected = await detector.fetchOpenCodeModels(provider?.command || 'opencode');
-    else if (key === 'codex') detected = await detector.fetchCodexModels();
-    else if (key === 'claude') detected = await detector.fetchClaudeModelSuggestions();
-    else if (key === 'gemini') detected = detector.fetchGeminiModelSuggestions();
-    else if (key === 'kiro') detected = await detector.fetchKiroModels(provider?.command || 'kiro-cli');
-    else if (key === 'kilocode') detected = await detector.fetchKiloCodeModels(provider?.command || 'kilo');
-    else if (key === 'command-code') detected = await detector.fetchCommandCodeModels();
-    const added = detected.map(model => ({ model_name: model, id: store.addModel(key, model, model, ['claude', 'command-code'].includes(key) ? 'default' : 'detected') }));
-    if (added.length === 0 && store.getModels(key).length === 0 && ['claude', 'gemini'].includes(key)) {
-        const id = store.addModel(key, 'default', 'default', 'default');
-        return res.json({ success: true, detected: [{ model_name: 'default', id }], models: store.getModels(key), fallback: true });
-    }
-    res.json({ success: true, detected: added, models: store.getModels(key) });
+    const added = await seedProviderModels(key, provider?.command);
+    res.json({ success: true, detected: added, models: store.getModels(key), fallback: added.length > 0 && ['claude', 'gemini'].includes(key) });
 });
 
 router.post('/cli-providers/:key/models', authMiddleware.requireChangePassword, (req, res) => {
