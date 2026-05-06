@@ -6,7 +6,7 @@
 
 | ID | Area | Severity | Status | Notes |
 |---|---|---:|---|---|
-| TD-001 | Telegram bot parity | High | Partial | Modular bot handles provider/project/model flow, but prompt execution only supports `codex`, `opencode`, and `command-code`. |
+| TD-001 | Telegram bot parity | High | Partial | Modular bot handles provider/project/model flow, and prompt execution now supports `codex`, `opencode`, `claude`, `gemini`, `kiro`, `kilocode`, and `command-code`. Remaining providers are still detect/config only. |
 | TD-002 | Test coverage | High | Open | Tests now cover detector registry plus settings/update/utils helpers. Bot/API/DB/auth/task paths are still mostly untested. |
 | TD-003 | UI split | Low | Closed | The old dashboard was removed; React SPA is the only admin UI path. |
 | TD-004 | Session/task persistence | High | Open | SQLite stores config, but runtime session/task state is not fully persisted. |
@@ -23,11 +23,11 @@
 
 ### TD-001 - Telegram bot parity
 
-The active modular bot supports provider selection, project selection, model selection, status, cancel, logs, settings link, and task execution for `codex`, `opencode`, and `command-code`.
+The active modular bot supports provider selection, project selection, model selection, status, cancel, logs, settings link, and task execution for `codex`, `opencode`, `claude`, `gemini`, `kiro`, `kilocode`, and `command-code`.
 
-OpenCode execution is hardened for Windows npm wrappers: child stdin is closed, npm `.cmd` wrappers are resolved to their Node entrypoints when possible, JSON stream output is parsed so completed runs clear the Telegram `Running` state, long-running tasks send heartbeat/progress messages instead of staying silent, and tool-call events are summarized as short progress logs while the final reply stays answer-only.
+OpenCode and Kilo Code execution are hardened for Windows npm wrappers: child stdin is closed for non-interactive JSON providers, npm `.cmd` wrappers are resolved to their Node entrypoints when possible, JSON stream output is parsed so completed runs clear the Telegram `Running` state, long-running tasks send heartbeat/progress messages instead of staying silent, and tool-call events are summarized as short progress logs while the final reply stays answer-only. Codex, Claude, and Gemini execution parse JSONL events. Kiro and Command Code execution use headless plain text output with stdin kept open only for confirmation prompts and the same heartbeat/final-summary flow.
 
-Remaining gap: other providers can be detected and configured but cannot execute prompts through Telegram until `buildRunCommand()` supports them.
+Remaining gap: providers other than `codex`, `opencode`, `claude`, `gemini`, `kiro`, `kilocode`, and `command-code` can be detected and configured but cannot execute prompts through Telegram until `buildRunCommand()` supports them.
 
 Risk: users may see a provider as configured in the dashboard but still receive "task not implemented" in Telegram.
 

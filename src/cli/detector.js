@@ -8,8 +8,8 @@ const ALL_PROVIDERS = [
     { key: 'opencode', displayName: 'OpenCode CLI', command: 'opencode', aliases: ['opencode', 'opencode-ai', 'opencode.cmd', 'opencode.ps1'], versionFlag: '--version' },
     { key: 'claude', displayName: 'Claude Code CLI', command: 'claude', aliases: ['claude', 'claude.cmd', 'claude.ps1', 'claude.exe'], versionFlag: '--version' },
     { key: 'gemini', displayName: 'Gemini CLI', command: 'gemini', aliases: ['gemini', 'gemini.cmd', 'gemini.ps1', 'gemini.exe'], versionFlag: '--version' },
-    { key: 'kiro', displayName: 'Kiro CLI', command: 'kiro', aliases: ['kiro', 'kiro.cmd', 'kiro.ps1', 'kiro.exe'], versionFlag: '--version' },
-    { key: 'kilocode', displayName: 'Kilo Code CLI', command: 'kilocode', aliases: ['kilocode', 'kilo', 'kilocode.cmd', 'kilocode.ps1', 'kilocode.exe'], versionFlag: '--version' },
+    { key: 'kiro', displayName: 'Kiro CLI', command: 'kiro-cli', aliases: ['kiro-cli', 'kiro-cli.cmd', 'kiro-cli.ps1', 'kiro-cli.exe', 'kiro', 'kiro.cmd', 'kiro.ps1', 'kiro.exe'], versionFlag: '--version' },
+    { key: 'kilocode', displayName: 'Kilo Code CLI', command: 'kilo', aliases: ['kilo', 'kilocode', 'kilo.cmd', 'kilo.ps1', 'kilo.exe', 'kilocode.cmd', 'kilocode.ps1', 'kilocode.exe'], versionFlag: '--version' },
     { key: 'aider', displayName: 'Aider CLI', command: 'aider', aliases: ['aider', 'aider.cmd', 'aider.ps1', 'aider.exe'], versionFlag: '--version' },
     { key: 'goose', displayName: 'Goose CLI', command: 'goose', aliases: ['goose', 'goose.cmd', 'goose.ps1', 'goose.exe'], versionFlag: '--version' },
     { key: 'github-copilot', displayName: 'GitHub Copilot CLI', command: 'gh', aliases: ['gh', 'gh.cmd', 'gh.exe'], versionFlag: '--version' },
@@ -108,7 +108,9 @@ function getExtraSearchDirs() {
         path.join(localAppData, 'Claude', 'bin'),
         path.join(localAppData, 'Programs', 'Claude', 'bin'),
         path.join(localAppData, 'Programs', 'Kiro', 'bin'),
+        path.join(localAppData, 'Kiro-Cli'),
         path.join(localAppData, 'Programs', 'GitHub CLI'),
+        path.join(programFiles, 'Kiro-Cli'),
         path.join(programFiles, 'GitHub CLI'),
         path.join(programFilesX86, 'GitHub CLI'),
         path.join(localAppData, 'Microsoft', 'WinGet', 'Links'),
@@ -178,7 +180,7 @@ function pickCommandCandidate(candidates) {
     if (!candidates.length) return '';
     if (process.platform !== 'win32') return candidates[0];
 
-    const priority = ['.exe', '.cmd', '.bat', '.ps1'];
+    const priority = ['.cmd', '.exe', '.bat', '.ps1'];
     for (const ext of priority) {
         const match = candidates.find(candidate => path.extname(candidate).toLowerCase() === ext);
         if (match) return match;
@@ -327,6 +329,10 @@ function runCommand(file, args = [], timeout = 5000) {
     return runPreparedCommand(prepareSpawnCommand(file, args), timeout);
 }
 
+function firstOutputLine(output) {
+    return String(output || '').split(/\r?\n/).map(line => line.trim()).find(Boolean) || '';
+}
+
 function findCommand(command) {
     const commandPath = pickCommandCandidate(getCommandCandidates(command));
     return {
@@ -369,7 +375,7 @@ async function detectCli(providerInfo) {
 
     const version = await runPreparedCommand(buildSpawnCommand(found.path, [versionFlag]), 3000);
     if (version.success) {
-        result.version = version.output.split(/\r?\n/)[0] || '';
+        result.version = firstOutputLine(version.output);
     }
 
     return result;
@@ -421,7 +427,70 @@ async function fetchOpenCodeModels(command = 'opencode') {
 }
 
 function fetchCodexModels() {
-    return [];
+    return ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex'];
+}
+
+function parseModelNames(output, options = {}) {
+    const text = String(output || '').trim();
+    if (!text) return [];
+    const allowPlainText = options.allowPlainText !== false;
+
+    try {
+        const parsed = JSON.parse(text);
+        const values = [];
+        const visit = value => {
+            if (!value) return;
+            if (typeof value === 'string') {
+                values.push(value);
+                return;
+            }
+            if (Array.isArray(value)) {
+                value.forEach(visit);
+                return;
+            }
+            if (typeof value === 'object') {
+                for (const key of ['model_id', 'model_name', 'id', 'model', 'name']) {
+                    if (typeof value[key] === 'string') values.push(value[key]);
+                }
+                for (const key of ['models', 'data', 'items', 'list']) {
+                    if (Array.isArray(value[key])) visit(value[key]);
+                }
+            }
+        };
+        visit(parsed);
+        return [...new Set(values.map(value => value.trim()).filter(Boolean))].sort();
+    } catch {
+        if (!allowPlainText) return [];
+    }
+
+    const matches = text.match(/[A-Za-z0-9][A-Za-z0-9_.-]*(?:\/[A-Za-z0-9][A-Za-z0-9_.:+-]*)?/g) || [];
+    return [...new Set(matches)]
+        .filter(model => model.length > 2)
+        .filter(model => !['available', 'models', 'model', 'provider', 'name'].includes(model.toLowerCase()))
+        .sort();
+}
+
+async function fetchKiroModels(command = 'kiro-cli') {
+    const parsed = splitCommand(command);
+    if (!parsed) return [];
+    const version = await runCommand(parsed.file, [...parsed.args, '--version'], 5000);
+    if (version.success && /^0\./.test(version.output.trim())) return [];
+    const result = await runCommand(parsed.file, [...parsed.args, 'chat', '--list-models', '--format', 'json'], 15000);
+    if (!result.success) return ['default'];
+    const models = parseModelNames(result.output, { allowPlainText: false });
+    return models.length ? models : ['default'];
+}
+
+async function fetchKiloCodeModels(command = 'kilo') {
+    const parsed = splitCommand(command);
+    if (!parsed) return [];
+    const result = await runCommand(parsed.file, [...parsed.args, 'models'], 15000);
+    if (!result.success) return [];
+    return [...new Set(String(result.output || '')
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(line => /^[A-Za-z0-9~][A-Za-z0-9_.~:-]*(?:\/[A-Za-z0-9_.~:-]+)+$/.test(line)))]
+        .sort();
 }
 
 function fetchCommandCodeModels() {
@@ -429,7 +498,11 @@ function fetchCommandCodeModels() {
 }
 
 function fetchClaudeModelSuggestions() {
-    return ['claude-3-5-sonnet', 'claude-3-7-sonnet', 'claude-sonnet-4', 'claude-opus-4'];
+    return [];
+}
+
+function fetchGeminiModelSuggestions() {
+    return [];
 }
 
 async function testCommand(command, timeoutMs = 10000) {
@@ -446,7 +519,7 @@ async function testCommand(command, timeoutMs = 10000) {
     const detected = findCommand(parsed.file);
     return {
         success: true,
-        output: result.output.split(/\r?\n/)[0] || '',
+        output: firstOutputLine(result.output),
         command,
         detectedPath: result.resolvedPath || detected.path || parsed.file
     };
@@ -460,6 +533,9 @@ module.exports = {
     fetchClaudeModelSuggestions,
     fetchCodexModels,
     fetchCommandCodeModels,
+    fetchGeminiModelSuggestions,
+    fetchKiloCodeModels,
+    fetchKiroModels,
     fetchOpenCodeModels,
     getCachedDetection,
     prepareSpawnCommand,

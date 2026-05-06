@@ -53,13 +53,13 @@ Current capabilities:
 - CLI provider registry supports 11 providers:
   `codex`, `opencode`, `claude`, `gemini`, `kiro`, `kilocode`, `aider`, `goose`, `github-copilot`, `crush`, `command-code`.
 - CLI provider scan is async and parallel; route handlers no longer block the Node event loop while version checks run.
-- Telegram task execution closes child stdin, resolves npm `.cmd` wrappers to their Node entrypoints on Windows, parses OpenCode JSON stream output so completed jobs clear `Running` state, sends progress heartbeats when a CLI is silent or still producing output, and reports short OpenCode tool-call summaries without putting tool JSON into the final answer.
+- Telegram task execution closes child stdin for non-interactive JSON providers, keeps stdin open only for terminal-style providers that may ask for confirmation, resolves npm `.cmd` wrappers to their Node entrypoints on Windows, parses OpenCode/Kilo Code JSON stream output plus Codex/Claude/Gemini JSONL output so completed jobs clear `Running` state, sends progress heartbeats when a CLI is silent or still producing output, and reports short tool-call summaries without putting raw tool JSON into the final answer. Kiro CLI and Command Code run in headless plain text mode with the same heartbeat and final-summary handling.
 - Admin dashboard exists as one React SPA source tree in `dashboard/`, served by Express at `/dashboard/`.
 - Public documentation now lives in `docs/`; internal implementation guidance stays in `wiki/`.
 
 Important limitations:
 
-- Telegram task execution is implemented for `codex`, `opencode`, and `command-code`. Other detected providers still need run-command integration before they can execute prompts through Telegram.
+- Telegram task execution is implemented for `codex`, `opencode`, `claude`, `gemini`, `kiro`, `kilocode`, and `command-code`. Other detected providers still need run-command integration before they can execute prompts through Telegram.
 - CLI task execution still lacks a durable queue, retry policy, and persisted task/session state.
 
 ## 5. Architecture
@@ -188,6 +188,7 @@ Current status:
 Current tests:
 
 - `tests/detector.test.js`
+- `tests/bot-run-command.test.js`
 - `tests/settingsConfig.test.js`
 - `tests/updateCheck.test.js`
 - `tests/utils.test.js`

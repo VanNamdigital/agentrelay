@@ -26,7 +26,7 @@ Status:
 
 Remaining Phase 1 work:
 
-- Add Telegram execution support for configured providers beyond `codex`, `opencode`, and `command-code`, or clearly mark non-executable providers in UI.
+- Add Telegram execution support for remaining configured providers beyond `codex`, `opencode`, `claude`, `gemini`, `kiro`, `kilocode`, and `command-code`, or clearly mark non-executable providers in UI.
 - Centralize log writes so secrets are redacted before reaching disk.
 - Add input validation for high-risk API routes.
 - Add a `/healthz` endpoint.
@@ -88,7 +88,7 @@ Work:
 
 Do not call the modular runtime production-ready until these are complete:
 
-- Telegram provider execution support is either complete or the UI clearly distinguishes detect-only providers from executable providers.
+- Telegram provider execution support is either complete for all listed providers or the UI clearly distinguishes detect-only providers from executable providers.
 - Bot/API/auth/store test coverage exists for critical paths.
 - Logs are redacted before disk write, not only before UI render.
 - A health endpoint exists.

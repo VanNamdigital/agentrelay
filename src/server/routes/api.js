@@ -570,6 +570,12 @@ router.get('/logs', (req, res) => {
     res.json({ lines: readLogLines({ filter: req.query.filter, search: req.query.search, limit: 500 }) });
 });
 
+router.delete('/logs', authMiddleware.requireChangePassword, (req, res) => {
+    fs.mkdirSync(logDir, { recursive: true });
+    fs.writeFileSync(LOG_PATH, '', 'utf8');
+    res.json({ success: true, lines: [] });
+});
+
 router.get('/cli-providers', (req, res) => {
     res.json(store.getCliProviders().map(serializeProvider));
 });
@@ -644,8 +650,15 @@ router.post('/cli-providers/:key/models/detect', authMiddleware.requireChangePas
     if (key === 'opencode') detected = await detector.fetchOpenCodeModels(provider?.command || 'opencode');
     else if (key === 'codex') detected = await detector.fetchCodexModels();
     else if (key === 'claude') detected = await detector.fetchClaudeModelSuggestions();
+    else if (key === 'gemini') detected = detector.fetchGeminiModelSuggestions();
+    else if (key === 'kiro') detected = await detector.fetchKiroModels(provider?.command || 'kiro-cli');
+    else if (key === 'kilocode') detected = await detector.fetchKiloCodeModels(provider?.command || 'kilo');
     else if (key === 'command-code') detected = await detector.fetchCommandCodeModels();
     const added = detected.map(model => ({ model_name: model, id: store.addModel(key, model, model, ['claude', 'command-code'].includes(key) ? 'default' : 'detected') }));
+    if (added.length === 0 && store.getModels(key).length === 0 && ['claude', 'gemini'].includes(key)) {
+        const id = store.addModel(key, 'default', 'default', 'default');
+        return res.json({ success: true, detected: [{ model_name: 'default', id }], models: store.getModels(key), fallback: true });
+    }
     res.json({ success: true, detected: added, models: store.getModels(key) });
 });
 

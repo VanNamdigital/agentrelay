@@ -6,6 +6,31 @@ This project follows the spirit of Keep a Changelog and uses semantic versioning
 
 ## Unreleased
 
+## 2.0.5 - 2026-05-06
+
+### Added
+
+- Added Telegram task runners for Codex CLI, Claude Code CLI, Gemini CLI, Kiro CLI, Kilo Code CLI, and Command Code CLI.
+- Added CLI output parsers for Codex JSONL, Claude stream JSON, Gemini stream JSON, and Kilo/OpenCode JSON event streams.
+- Added Telegram confirmation handling for CLI prompts with `Approve run`, `Do not run`, and session-scoped `Always approve`.
+- Added a dashboard `Clear logs` action for `logs/app.log`.
+
+### Changed
+
+- Updated Kiro detection to prefer `kiro-cli` and detect installed Kiro CLI model names.
+- Updated Kilo Code detection to keep full model IDs such as `kilo/kilo-auto/free`.
+- Set OpenCode default model to `opencode/big-pickle` and Kilo Code default model to `kilo/kilo-auto/free`.
+- Hardened Windows command resolution to prefer npm `.cmd` shims before Windows app executables.
+- Expanded provider documentation and internal wiki notes for the new Telegram runners.
+
+### Fixed
+
+- Fixed Kiro final replies so stdout answers are returned instead of stderr spinner/credits output.
+- Fixed Kilo Code headless execution by using `--auto` and full Kilo model IDs.
+- Fixed Gemini tool-event spam in Telegram while preserving final answers.
+- Fixed Claude, Codex, Gemini, Kilo Code, and OpenCode final-answer extraction so raw event JSON is not shown as the final response.
+- Fixed approval state so `Always approve` resets when users go back or choose a new project, provider, or model.
+
 ## 2.0.4 - 2026-05-06
 
 ### Added

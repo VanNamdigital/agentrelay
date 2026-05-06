@@ -8,7 +8,7 @@ AgentRelay is a local-first Telegram bot and admin dashboard for controlling AI 
 
 It is intended for personal local use. Do not expose it directly to the internet.
 
-> Runtime support note: the Telegram bot currently has verified prompt execution for OpenCode CLI. Other CLI providers are being updated and may be limited to detection/configuration until their runners are completed.
+> Runtime support note: OpenCode CLI is the currently verified Telegram prompt runtime. Other CLI runners are being updated and should be treated as experimental until validated on your machine.
 
 <table>
   <tr>
@@ -67,8 +67,8 @@ Change this password immediately after first login.
     <td align="center" width="120"><img src="images/provider-icons/gemini.svg" width="48" height="48" alt="Gemini icon"><br><strong>Gemini</strong><br><code>gemini</code></td>
   </tr>
   <tr>
-    <td align="center" width="120"><img src="images/provider-icons/kiro.svg" width="48" height="48" alt="Kiro icon"><br><strong>Kiro</strong><br><code>kiro</code></td>
-    <td align="center" width="120"><img src="images/provider-icons/kilocode.svg" width="48" height="48" alt="Kilo Code icon"><br><strong>Kilo Code</strong><br><code>kilocode</code></td>
+    <td align="center" width="120"><img src="images/provider-icons/kiro.svg" width="48" height="48" alt="Kiro icon"><br><strong>Kiro</strong><br><code>kiro-cli</code></td>
+    <td align="center" width="120"><img src="images/provider-icons/kilocode.svg" width="48" height="48" alt="Kilo Code icon"><br><strong>Kilo Code</strong><br><code>kilo</code></td>
     <td align="center" width="120"><img src="images/provider-icons/aider.svg" width="48" height="48" alt="Aider icon"><br><strong>Aider</strong><br><code>aider</code></td>
     <td align="center" width="120"><img src="images/provider-icons/github-copilot.svg" width="48" height="48" alt="GitHub Copilot icon"><br><strong>Copilot</strong><br><code>github-copilot</code></td>
     <td align="center" width="120"><img src="images/provider-icons/crush.svg" width="48" height="48" alt="Crush icon"><br><strong>Crush</strong><br><code>crush</code></td>

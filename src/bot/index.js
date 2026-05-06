@@ -5,7 +5,7 @@ const { Markup, Telegraf } = require('telegraf');
 const store = require('../config/store');
 const { prepareSpawnCommand, splitCommand } = require('../cli/detector');
 const { logDir } = require('../runtimePaths');
-const { compactText, escapeHTML, formatDuration, parseOpenCodeRunOutput, splitPlainText, summarizeOutput } = require('../utils');
+const { compactText, escapeHTML, formatDuration, parseCliRunOutput, splitPlainText, summarizeOutput } = require('../utils');
 const { redactSecrets } = require('../settingsConfig');
 const { text: botText, button: botButton, matchesButton } = require('./messages');
 
@@ -19,7 +19,8 @@ const STATE = {
     SELECT_PROVIDER: 'select_provider',
     SELECT_PROJECT: 'select_project',
     SELECT_MODEL: 'select_model',
-    CHAT: 'chat'
+    CHAT: 'chat',
+    CONFIRM_RUN: 'confirm_run'
 };
 
 function getConfig() {
@@ -72,10 +73,16 @@ function getSession(userId) {
             providerKey: '',
             modelName: '',
             running: false,
-            currentTask: null
+            currentTask: null,
+            pendingApproval: null,
+            autoApproveProviderKeys: new Set()
         });
     }
     return sessions.get(userId);
+}
+
+function clearSessionAutoApprovals(session) {
+    session.autoApproveProviderKeys = new Set();
 }
 
 function providerLabel(provider) {
@@ -107,6 +114,14 @@ function modelKeyboard(providerKey) {
     const rows = getProviderModels(providerKey).map(model => [model.display_name || model.model_name]);
     rows.push([botButton('back'), botButton('main')]);
     return keyboard(rows);
+}
+
+function runApprovalKeyboard() {
+    return keyboard([
+        [botButton('approveRun'), botButton('denyRun')],
+        [botButton('autoApprove')],
+        [botButton('back'), botButton('main')]
+    ]);
 }
 
 async function replyHtml(ctx, html, extra = {}) {
@@ -203,9 +218,13 @@ async function showLogs(ctx) {
     await replyHtml(ctx, `<pre><code>${escapeHTML(lines.map(line => redactSecrets(line)).join('\n'))}</code></pre>`, mainKeyboard());
 }
 
-function buildRunCommand(provider, modelName, projectPath, prompt) {
+function buildRunCommand(provider, modelName, projectPath, prompt, options = {}) {
     const parsed = splitCommand(provider.command);
     if (!parsed) return null;
+    const normalizedModelName = String(modelName || '').toLowerCase();
+    const useModel = modelName
+        && !['default', 'auto'].includes(normalizedModelName)
+        && !(provider.key === 'kilocode' && normalizedModelName === 'balanced');
 
     if (provider.key === 'codex') {
         return {
@@ -219,6 +238,7 @@ function buildRunCommand(provider, modelName, projectPath, prompt) {
                 '--sandbox', 'workspace-write',
                 '--ephemeral',
                 '--json',
+                '--color', 'never',
                 prompt
             ]
         };
@@ -238,6 +258,64 @@ function buildRunCommand(provider, modelName, projectPath, prompt) {
         };
     }
 
+    if (provider.key === 'claude') {
+        return {
+            file: parsed.file,
+            args: [
+                ...parsed.args,
+                '-p',
+                '--output-format', 'stream-json',
+                '--verbose',
+                '--include-partial-messages',
+                '--no-session-persistence',
+                ...(useModel ? ['--model', modelName] : []),
+                prompt
+            ]
+        };
+    }
+
+    if (provider.key === 'gemini') {
+        return {
+            file: parsed.file,
+            args: [
+                ...parsed.args,
+                '-p', prompt,
+                '--output-format', 'stream-json',
+                ...(useModel ? ['-m', modelName] : [])
+            ]
+        };
+    }
+
+    if (provider.key === 'kiro') {
+        return {
+            file: parsed.file,
+            args: [
+                ...parsed.args,
+                'chat',
+                '--no-interactive',
+                ...(options.trustAllTools ? ['--trust-all-tools'] : []),
+                '--wrap', 'never',
+                ...(useModel ? ['--model', modelName] : []),
+                prompt
+            ]
+        };
+    }
+
+    if (provider.key === 'kilocode') {
+        return {
+            file: parsed.file,
+            args: [
+                ...parsed.args,
+                'run',
+                '--format', 'json',
+                '--dir', projectPath,
+                '--auto',
+                ...(useModel ? ['-m', modelName] : []),
+                prompt
+            ]
+        };
+    }
+
     if (provider.key === 'command-code') {
         return {
             file: parsed.file,
@@ -246,13 +324,82 @@ function buildRunCommand(provider, modelName, projectPath, prompt) {
                 '--print',
                 prompt,
                 '--trust',
-                '--skip-onboarding',
-                '--auto-accept'
+                '--skip-onboarding'
             ]
         };
     }
 
     return null;
+}
+
+function getUnsupportedRunReason(provider) {
+    if (provider.key === 'kiro' && /^0\./.test(String(provider.version || '').trim())) {
+        return `installed Kiro ${provider.version} is the legacy IDE command and does not support headless --no-interactive. Install/update Kiro CLI and configure KIRO_COMMAND=kiro-cli.`;
+    }
+    return '';
+}
+
+function providerAutoApproveEnabled(session, providerKey) {
+    return Boolean(session.autoApproveProviderKeys?.has(providerKey));
+}
+
+function runTrustOptions(providerKey, approved) {
+    return {
+        trustAllTools: providerKey === 'kiro' && approved
+    };
+}
+
+function detectCliApprovalRequest(text) {
+    const value = String(text || '');
+    if (!value.trim()) return false;
+    if (/All tools are now trusted/i.test(value)) return false;
+    return [
+        /(?:\by\/n\b|\byes\/no\b|\[[yY]\/[nN]\]|\([yY]\/[nN]\))/i,
+        /\b(approve|allow|permit|confirm|continue|proceed)\b[^\r\n?]{0,160}\?/i,
+        /\brequires? (your )?(approval|permission|confirmation)\b/i,
+        /\bneeds? (your )?(approval|permission|confirmation)\b/i,
+        /\bwaiting for (approval|permission|confirmation)\b/i
+    ].some(pattern => pattern.test(value));
+}
+
+function shouldScanStdoutForApproval(providerKey) {
+    return ['kiro', 'command-code'].includes(providerKey);
+}
+
+function providerNeedsInteractiveStdin(providerKey) {
+    return ['kiro', 'command-code'].includes(providerKey);
+}
+
+async function requestRunApproval(ctx, session, provider, model, prompt, preview = '') {
+    session.pendingApproval = {
+        kind: 'cli_confirmation',
+        providerKey: provider.key,
+        modelName: model.model_name,
+        projectPath: session.projectPath,
+        prompt,
+        preview,
+        requestedAt: Date.now()
+    };
+    session.state = STATE.CONFIRM_RUN;
+
+    await replyHtml(ctx, botText('bot.runApprovalRequired', {
+        provider: escapeHTML(providerLabel(provider)),
+        model: escapeHTML(model.model_name),
+        project: escapeHTML(session.projectPath),
+        prompt: escapeHTML(compactText(preview || prompt).slice(0, 600))
+    }), runApprovalKeyboard());
+}
+
+function writeCliApproval(task) {
+    if (!task?.child?.stdin || task.child.stdin.destroyed) return false;
+    try {
+        task.child.stdin.write('y\n');
+        task.progressNote = 'approval sent';
+        task.awaitingApproval = false;
+        return true;
+    } catch {
+        return false;
+    }
 }
 
 function terminateProcessTree(child) {
@@ -271,7 +418,7 @@ function terminateProcessTree(child) {
     try { child.kill('SIGTERM'); } catch {}
 }
 
-async function runPrompt(ctx, session, prompt) {
+async function runPrompt(ctx, session, prompt, options = {}) {
     if (session.running) {
         await replyHtml(ctx, botText('bot.taskAlreadyRunning'), mainKeyboard());
         return;
@@ -280,6 +427,12 @@ async function runPrompt(ctx, session, prompt) {
     const provider = getProviderByKey(session.providerKey);
     if (!provider || !provider.enabled || !['detected', 'manual_valid'].includes(provider.status)) {
         await replyHtml(ctx, botText('bot.providerDisabled'), mainKeyboard());
+        return;
+    }
+
+    const unsupportedReason = getUnsupportedRunReason(provider);
+    if (unsupportedReason) {
+        await replyHtml(ctx, botText('bot.taskProviderUnsupported', { reason: escapeHTML(unsupportedReason) }), mainKeyboard());
         return;
     }
 
@@ -294,7 +447,9 @@ async function runPrompt(ctx, session, prompt) {
         return;
     }
 
-    const command = buildRunCommand(provider, model.model_name, session.projectPath, prompt);
+    const runApproved = Boolean(options.approvedRun || providerAutoApproveEnabled(session, provider.key));
+
+    const command = buildRunCommand(provider, model.model_name, session.projectPath, prompt, runTrustOptions(provider.key, runApproved));
     if (!command) {
         await replyHtml(ctx, botText('bot.taskNotImplemented'), mainKeyboard());
         return;
@@ -311,8 +466,8 @@ async function runPrompt(ctx, session, prompt) {
         cwd: session.projectPath,
         windowsHide: true,
         shell: false,
-        stdio: ['ignore', 'pipe', 'pipe'],
-        env: process.env
+        stdio: [providerNeedsInteractiveStdin(provider.key) ? 'pipe' : 'ignore', 'pipe', 'pipe'],
+        env: { ...process.env, ...(command.env || {}) }
     });
 
     let output = '';
@@ -324,9 +479,9 @@ async function runPrompt(ctx, session, prompt) {
     const progressState = {
         lastSentAt: Date.now(),
         lastReportedBytes: 0,
-        openCodeSessionNotified: false,
-        openCodeTextNotified: false,
-        openCodeToolCount: 0
+        sessionNotified: false,
+        textNotified: false,
+        toolCount: 0
     };
     const task = {
         child,
@@ -361,14 +516,24 @@ async function runPrompt(ctx, session, prompt) {
     }
 
     function currentProviderPreview() {
-        if (provider.key === 'opencode') {
-            const parsed = parseOpenCodeRunOutput(output);
+        if (['opencode', 'kilocode', 'codex', 'claude', 'gemini'].includes(provider.key)) {
+            const parsed = parseCliRunOutput(provider.key, output);
             return parsed.text || parsed.errors.join('\n') || errorOutput || '';
         }
         return `${output}\n${errorOutput}`.trim();
     }
 
-    function sendOpenCodeToolProgress(toolEvent) {
+    function providerRuntimeLabel() {
+        if (provider.key === 'opencode') return 'OpenCode';
+        if (provider.key === 'kilocode') return 'Kilo Code';
+        if (provider.key === 'codex') return 'Codex';
+        if (provider.key === 'claude') return 'Claude Code';
+        if (provider.key === 'gemini') return 'Gemini CLI';
+        if (provider.key === 'kiro') return 'Kiro';
+        return providerLabel(provider);
+    }
+
+    function sendToolProgress(toolEvent) {
         const preview = toolEvent.preview
             ? `\n<code>${escapeHTML(redactSecrets(toolEvent.preview))}</code>`
             : '';
@@ -379,7 +544,7 @@ async function runPrompt(ctx, session, prompt) {
                 title: escapeHTML(toolEvent.title || 'tool'),
                 tool: escapeHTML(toolEvent.tool || 'tool')
             }),
-            `opencode tool ${toolEvent.tool || 'tool'} ${toolEvent.status || 'updated'} title=${toolEvent.title || ''} preview=${toolEvent.preview || ''}`
+            `${provider.key} tool ${toolEvent.tool || 'tool'} ${toolEvent.status || 'updated'} title=${toolEvent.title || ''} preview=${toolEvent.preview || ''}`
         );
     }
 
@@ -397,38 +562,61 @@ async function runPrompt(ctx, session, prompt) {
     }
 
     function handleProviderOutput() {
-        if (provider.key !== 'opencode') return;
+        if (!['opencode', 'kilocode', 'codex', 'claude', 'gemini'].includes(provider.key)) return;
 
-        const parsed = parseOpenCodeRunOutput(output);
-        if (parsed.stepStarted && !progressState.openCodeSessionNotified) {
-            progressState.openCodeSessionNotified = true;
+        const parsed = parseCliRunOutput(provider.key, output);
+        if (parsed.stepStarted && !progressState.sessionNotified) {
+            progressState.sessionNotified = true;
             const sessionID = parsed.sessionID || 'unknown';
             sendProgress(
-                botText('bot.openCodeSessionStarted', { session: escapeHTML(sessionID) }),
-                `opencode session started session=${sessionID}`
+                botText('bot.cliSessionStarted', {
+                    provider: escapeHTML(providerRuntimeLabel()),
+                    session: escapeHTML(sessionID)
+                }),
+                `${provider.key} session started session=${sessionID}`
             );
         }
-        if (parsed.textStarted && !parsed.completed && !progressState.openCodeTextNotified && Date.now() - task.startedAt > 20000) {
-            progressState.openCodeTextNotified = true;
+        if (parsed.textStarted && !parsed.completed && !progressState.textNotified && Date.now() - task.startedAt > 20000) {
+            progressState.textNotified = true;
             sendProgress(
-                botText('bot.openCodeTextStarted'),
-                'opencode text stream started'
+                botText('bot.cliTextStarted', { provider: escapeHTML(providerRuntimeLabel()) }),
+                `${provider.key} text stream started`
             );
         }
-        if (parsed.toolCount > progressState.openCodeToolCount) {
-            for (const toolEvent of parsed.toolEvents.slice(progressState.openCodeToolCount)) {
-                sendOpenCodeToolProgress(toolEvent);
+        if (parsed.toolCount > progressState.toolCount) {
+            if (provider.key !== 'gemini') {
+                for (const toolEvent of parsed.toolEvents.slice(progressState.toolCount)) {
+                    sendToolProgress(toolEvent);
+                }
             }
-            progressState.openCodeToolCount = parsed.toolCount;
+            progressState.toolCount = parsed.toolCount;
         }
         if (parsed.toolUsed && parsed.finishReason === 'tool-calls') {
-            markProgress('opencode tool step finished; waiting final answer');
+            markProgress(`${provider.key} tool step finished; waiting final answer`);
         }
         if (parsed.completed) {
-            task.openCodeCompleted = true;
-            task.openCodeSessionID = parsed.sessionID;
-            requestTerminate('opencode-complete', 1500);
+            task.providerCompleted = true;
+            task.providerSessionID = parsed.sessionID;
+            requestTerminate(`${provider.key}-complete`, 1500);
         }
+    }
+
+    function handleApprovalRequest(sourceText) {
+        if (closed || task.awaitingApproval || !detectCliApprovalRequest(sourceText)) return;
+        const preview = summarizeOutput(sourceText, redactSecrets).preview || sourceText;
+        if (providerAutoApproveEnabled(session, provider.key)) {
+            if (task.lastAutoApprovalAt && Date.now() - task.lastAutoApprovalAt < 1000) return;
+            task.approvalAutoApproved = true;
+            task.lastAutoApprovalAt = Date.now();
+            appendRuntimeLog('INFO', `task auto approval sent provider=${provider.key} pid=${child.pid || ''} preview=${preview.slice(0, 240)}`);
+            writeCliApproval(task);
+            return;
+        }
+
+        task.awaitingApproval = true;
+        task.progressNote = 'waiting for Telegram approval';
+        appendRuntimeLog('INFO', `task waiting approval provider=${provider.key} pid=${child.pid || ''} preview=${preview.slice(0, 240)}`);
+        requestRunApproval(ctx, session, provider, model, prompt, preview).catch(() => {});
     }
 
     const timeout = setTimeout(() => {
@@ -481,6 +669,7 @@ async function runPrompt(ctx, session, prompt) {
         task.lastOutputAt = Date.now();
         task.outputBytes = output.length;
         markProgress(`stdout ${task.outputBytes} bytes`);
+        if (shouldScanStdoutForApproval(provider.key)) handleApprovalRequest(text);
         handleProviderOutput();
     });
 
@@ -490,6 +679,7 @@ async function runPrompt(ctx, session, prompt) {
         task.lastErrorAt = Date.now();
         task.errorBytes = errorOutput.length;
         markProgress(`stderr ${task.errorBytes} bytes`);
+        if (providerNeedsInteractiveStdin(provider.key)) handleApprovalRequest(text);
     });
 
     child.on('error', async error => {
@@ -499,6 +689,10 @@ async function runPrompt(ctx, session, prompt) {
         if (progressTimer) clearInterval(progressTimer);
         session.running = false;
         session.currentTask = null;
+        if (session.state === STATE.CONFIRM_RUN && session.pendingApproval?.providerKey === provider.key) {
+            session.state = STATE.CHAT;
+            session.pendingApproval = null;
+        }
         appendRuntimeLog('ERROR', `task failed to start provider=${provider.key} pid=${child.pid || ''} error=${error.message}`);
         await replyHtml(ctx, botText('bot.failedStart', { error: escapeHTML(error.message) }), mainKeyboard());
     });
@@ -512,16 +706,23 @@ async function runPrompt(ctx, session, prompt) {
         const timedOut = closedTask?.timedOut;
         session.running = false;
         session.currentTask = null;
+        if (session.state === STATE.CONFIRM_RUN && session.pendingApproval?.providerKey === provider.key) {
+            session.state = STATE.CHAT;
+            session.pendingApproval = null;
+        }
 
-        const openCodeResult = provider.key === 'opencode' ? parseOpenCodeRunOutput(output) : null;
-        const completedByOpenCode = Boolean(openCodeResult?.completed || closedTask?.openCodeCompleted);
-        const resultText = openCodeResult?.text
-            || openCodeResult?.errors?.join('\n')
-            || (provider.key === 'opencode'
-                ? botText('bot.noFinalAnswer', { code })
-                : `${output}\n${errorOutput}`.trim());
+        const parsedResult = ['opencode', 'kilocode', 'codex', 'claude', 'gemini'].includes(provider.key)
+            ? parseCliRunOutput(provider.key, output)
+            : null;
+        const completedByProvider = Boolean(parsedResult?.completed || closedTask?.providerCompleted);
+        const resultText = parsedResult
+            ? (parsedResult.text
+                || parsedResult.errors?.join('\n')
+                || errorOutput
+                || botText('bot.noFinalAnswer', { code }))
+            : (output || errorOutput || '').trim();
         const summary = summarizeOutput(resultText, redactSecrets);
-        const displayCode = completedByOpenCode && (code === null || code !== 0) ? 0 : code;
+        const displayCode = completedByProvider && (code === null || code !== 0) ? 0 : code;
         const header = timedOut
             ? botText('bot.taskCancelled', { minutes: timeoutMinutes })
             : botText('bot.taskFinished', { code: displayCode });
@@ -549,18 +750,83 @@ function findModelByText(providerKey, text) {
     return getProviderModels(providerKey).find(model => model.model_name === text || model.display_name === text);
 }
 
+async function handleRunApproval(ctx, session, text) {
+    const pending = session.pendingApproval;
+    if (!pending) {
+        session.state = STATE.CHAT;
+        await replyHtml(ctx, botText('bot.runApprovalCancelled'), mainKeyboard());
+        return true;
+    }
+
+    if (matchesButton(text, 'denyRun') || matchesButton(text, 'back') || matchesButton(text, 'cancel') || matchesButton(text, 'main') || text === '/start') {
+        if (session.currentTask?.child) {
+            session.currentTask.cancelled = true;
+            session.currentTask.progressNote = 'approval denied';
+            terminateProcessTree(session.currentTask.child);
+        }
+        session.pendingApproval = null;
+        session.state = STATE.CHAT;
+        await replyHtml(ctx, botText('bot.runApprovalCancelled'), keyboard([[botButton('status'), botButton('cancel')], [botButton('back'), botButton('main')]]));
+        return true;
+    }
+
+    if (!matchesButton(text, 'approveRun') && !matchesButton(text, 'autoApprove')) {
+        await replyHtml(ctx, botText('bot.runApprovalRequired', {
+            provider: escapeHTML(pending.providerKey),
+            model: escapeHTML(pending.modelName),
+            project: escapeHTML(pending.projectPath),
+            prompt: escapeHTML(compactText(pending.preview || pending.prompt).slice(0, 600))
+        }), runApprovalKeyboard());
+        return true;
+    }
+
+    const autoApprove = matchesButton(text, 'autoApprove');
+    const provider = getProviderByKey(pending.providerKey);
+    session.pendingApproval = null;
+    session.state = STATE.CHAT;
+
+    if (autoApprove) {
+        if (!session.autoApproveProviderKeys) session.autoApproveProviderKeys = new Set();
+        session.autoApproveProviderKeys.add(pending.providerKey);
+        await replyHtml(ctx, botText('bot.autoApproveEnabled', {
+            provider: escapeHTML(provider ? providerLabel(provider) : pending.providerKey)
+        }));
+    }
+
+    const sent = writeCliApproval(session.currentTask);
+    if (!sent) {
+        await replyHtml(ctx, botText('bot.failedStart', { error: 'CLI is no longer waiting for approval' }), mainKeyboard());
+        return true;
+    }
+    await replyHtml(ctx, botText('bot.approvalSent'), keyboard([[botButton('status'), botButton('cancel')], [botButton('back'), botButton('main')]]));
+    return true;
+}
+
 async function handleText(ctx) {
     const userId = ctx.from?.id;
     const text = String(ctx.message?.text || '').trim();
     const session = getSession(userId);
 
-    if (!text || text === '/start' || matchesButton(text, 'main')) {
+    if (!text) {
+        await showMainMenu(ctx);
+        return;
+    }
+
+    if (session.state === STATE.CONFIRM_RUN) {
+        await handleRunApproval(ctx, session, text);
+        return;
+    }
+
+    if (text === '/start' || matchesButton(text, 'main')) {
         session.state = STATE.MAIN;
+        session.pendingApproval = null;
+        clearSessionAutoApprovals(session);
         await showMainMenu(ctx);
         return;
     }
 
     if (matchesButton(text, 'back')) {
+        clearSessionAutoApprovals(session);
         if (session.state === STATE.CHAT) {
             session.state = STATE.SELECT_MODEL;
             await showModels(ctx, session, getProviderByKey(session.providerKey));
@@ -571,9 +837,16 @@ async function handleText(ctx) {
         return;
     }
 
-    if (matchesButton(text, 'projects')) return showProjects(ctx, session);
-    if (matchesButton(text, 'providers')) return showProviders(ctx, session);
+    if (matchesButton(text, 'projects')) {
+        clearSessionAutoApprovals(session);
+        return showProjects(ctx, session);
+    }
+    if (matchesButton(text, 'providers')) {
+        clearSessionAutoApprovals(session);
+        return showProviders(ctx, session);
+    }
     if (matchesButton(text, 'models')) {
+        clearSessionAutoApprovals(session);
         const provider = session.providerKey ? getProviderByKey(session.providerKey) : null;
         if (!provider) return showProviders(ctx, session);
         return showModels(ctx, session, provider);
@@ -604,6 +877,7 @@ async function handleText(ctx) {
             return;
         }
         session.projectPath = project.path;
+        clearSessionAutoApprovals(session);
         await replyHtml(ctx, `${botText('bot.project')}: <code>${escapeHTML(project.path)}</code>`);
         await showProviders(ctx, session);
         return;
@@ -611,6 +885,7 @@ async function handleText(ctx) {
 
     const provider = findProviderByText(text);
     if (provider) {
+        clearSessionAutoApprovals(session);
         await showModels(ctx, session, provider);
         return;
     }
@@ -622,6 +897,7 @@ async function handleText(ctx) {
             return;
         }
         session.modelName = model.model_name;
+        clearSessionAutoApprovals(session);
         session.state = STATE.CHAT;
         await replyHtml(ctx, botText('bot.modelSelected', { model: escapeHTML(model.model_name) }), keyboard([[botButton('status'), botButton('cancel')], [botButton('back'), botButton('main')]]));
         return;
@@ -721,5 +997,9 @@ module.exports = {
     getEnabledProviders,
     getProviderModels,
     getProviderByKey,
-    getDefaultModel
+    getDefaultModel,
+    _buildRunCommand: buildRunCommand,
+    _getUnsupportedRunReason: getUnsupportedRunReason,
+    _detectCliApprovalRequest: detectCliApprovalRequest,
+    _providerNeedsInteractiveStdin: providerNeedsInteractiveStdin
 };

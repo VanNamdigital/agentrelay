@@ -25,7 +25,23 @@ Telegram users pick:
 3. Model
 4. Prompt
 
-The bot starts one local child process for the task, streams output internally, summarizes the final output, and redacts secrets before sending text back.
+The bot starts one local child process for the task, streams output internally, sends heartbeat/progress updates for long-running work, summarizes the final output, and redacts secrets before sending text back. Providers that do not ask for confirmation run immediately.
+
+When CLI output asks for confirmation, Telegram shows a generic approval keyboard while the process waits:
+
+- `Approve run` sends approval to the waiting CLI once.
+- `Do not run` cancels the pending task.
+- `Always approve` stores auto-approval only for the current Telegram selection. It is cleared when the user goes back to the menu or chooses another project, provider, or model.
+
+Provider-specific approval flags are handled internally by AgentRelay.
+
+Provider output handling:
+
+- OpenCode and Kilo Code use JSON event streams for session, text, tool, and completion updates.
+- Codex uses `codex exec --json` JSONL events and returns the final agent message.
+- Claude Code uses `claude -p --output-format stream-json --verbose` JSONL events and returns the final result.
+- Gemini CLI uses `gemini -p --output-format stream-json` JSONL events and returns the final result.
+- Kiro and Command Code use headless plain text output and receive the same heartbeat/final-summary handling.
 
 ## Timeouts
 

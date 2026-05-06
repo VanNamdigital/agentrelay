@@ -8,6 +8,10 @@ import {
     renderMarkdownishToHtml,
     formatDuration,
     isProviderModel,
+    parseClaudeRunOutput,
+    parseCliRunOutput,
+    parseCodexRunOutput,
+    parseGeminiRunOutput,
     parseOpenCodeModels,
     parseOpenCodeRunOutput,
     summarizeOutput,
@@ -227,6 +231,90 @@ describe('parseOpenCodeRunOutput', () => {
         }]);
         expect(result.toolUsed).toBe(true);
         expect(result.text).toBe('');
+    });
+});
+
+describe('parseCodexRunOutput', () => {
+    it('extracts final agent message from Codex JSONL events', () => {
+        const output = [
+            '{"type":"thread.started","thread_id":"thread_123"}',
+            '{"type":"agent_message_delta","delta":"Hel"}',
+            '{"type":"agent_message_delta","delta":"lo"}',
+            '{"type":"agent_message","message":"Hello"}',
+            '{"type":"turn.completed","reason":"completed"}'
+        ].join('\n');
+
+        const result = parseCodexRunOutput(output);
+
+        expect(result.completed).toBe(true);
+        expect(result.sessionID).toBe('thread_123');
+        expect(result.stepStarted).toBe(true);
+        expect(result.textStarted).toBe(true);
+        expect(result.text).toBe('Hello');
+    });
+
+    it('extracts completed assistant item messages', () => {
+        const output = [
+            '{"type":"item.completed","item":{"type":"agent_message","content":[{"type":"output_text","text":"Done"}]}}',
+            '{"type":"task_complete"}'
+        ].join('\n');
+
+        const result = parseCodexRunOutput(output);
+
+        expect(result.completed).toBe(true);
+        expect(result.text).toBe('Done');
+    });
+
+    it('routes provider parsing through parseCliRunOutput', () => {
+        const codex = parseCliRunOutput('codex', '{"type":"agent_message","message":"OK"}');
+        const kilo = parseCliRunOutput('kilocode', '{"type":"text","part":{"type":"text","text":"OK"}}');
+
+        expect(codex.text).toBe('OK');
+        expect(kilo.text).toBe('OK');
+    });
+});
+
+describe('provider JSON stream parsers', () => {
+    it('extracts Claude final results and session metadata', () => {
+        const output = [
+            '{"type":"system","subtype":"init","session_id":"claude-session"}',
+            '{"type":"assistant","message":{"content":[{"type":"text","text":"Working"}]}}',
+            '{"type":"result","subtype":"success","result":"Done"}'
+        ].join('\n');
+
+        const result = parseClaudeRunOutput(output);
+
+        expect(result.completed).toBe(true);
+        expect(result.sessionID).toBe('claude-session');
+        expect(result.stepStarted).toBe(true);
+        expect(result.textStarted).toBe(true);
+        expect(result.text).toBe('Done');
+    });
+
+    it('extracts Gemini stream-json final response without noisy tool progress', () => {
+        const output = [
+            '{"type":"init","session_id":"gemini-session","model":"gemini-2.5-flash"}',
+            '{"type":"message","role":"assistant","content":[{"type":"text","text":"Working"}]}',
+            '{"type":"tool_use","id":"tool-1","name":"read_file","args":{"path":"README.md"}}',
+            '{"type":"tool_result","id":"tool-1","name":"read_file","result":"README content"}',
+            '{"type":"result","response":"Done","stats":{"total_tokens":10}}'
+        ].join('\n');
+
+        const result = parseGeminiRunOutput(output);
+
+        expect(result.completed).toBe(true);
+        expect(result.sessionID).toBe('gemini-session');
+        expect(result.text).toBe('Done');
+        expect(result.toolUsed).toBe(true);
+        expect(result.toolCount).toBe(0);
+    });
+
+    it('routes Claude and Gemini through parseCliRunOutput', () => {
+        const claude = parseCliRunOutput('claude', '{"type":"result","subtype":"success","result":"OK"}');
+        const gemini = parseCliRunOutput('gemini', '{"type":"result","response":"OK"}');
+
+        expect(claude.text).toBe('OK');
+        expect(gemini.text).toBe('OK');
     });
 });
 

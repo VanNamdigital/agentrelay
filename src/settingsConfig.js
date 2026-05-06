@@ -5,7 +5,9 @@ const SECRET_ENV_KEYS = new Set([
     'OPENROUTER_API_KEY',
     'ANTHROPIC_API_KEY',
     'GOOGLE_API_KEY',
-    'OPENCODE_API_KEY'
+    'OPENCODE_API_KEY',
+    'KIRO_API_KEY',
+    'KILO_API_KEY'
 ]);
 
 const SECRET_KEY_PATTERN = /(token|secret|password|passwd|pwd|api[_-]?key|access[_-]?token|refresh[_-]?token|bot[_-]?token|authorization|credential|private[_-]?key|client[_-]?secret|signing[_-]?secret|aes[_-]?key)/i;

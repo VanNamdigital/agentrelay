@@ -59,6 +59,7 @@ export const api = {
   testProjectPath: (path) => request(`/projects/test?path=${encodeURIComponent(path)}`),
 
   getLogs: (params = {}) => request(`/logs?${new URLSearchParams(params).toString()}`),
+  clearLogs: () => request('/logs', { method: 'DELETE' }),
 
   getCliProviders: () => request('/cli-providers'),
   scanCliProviders: () => request('/cli-providers/scan', { method: 'POST' }),

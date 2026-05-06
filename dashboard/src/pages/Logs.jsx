@@ -6,6 +6,7 @@ function Logs() {
   const [search, setSearch] = useState('');
   const [lines, setLines] = useState([]);
   const [error, setError] = useState('');
+  const [clearing, setClearing] = useState(false);
 
   async function load() {
     try {
@@ -14,6 +15,20 @@ function Logs() {
       setError('');
     } catch (err) {
       setError(err.message);
+    }
+  }
+
+  async function clearLogs() {
+    if (!window.confirm('Clear logs/app.log?')) return;
+    setClearing(true);
+    try {
+      await api.clearLogs();
+      setLines([]);
+      setError('');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setClearing(false);
     }
   }
 
@@ -50,6 +65,7 @@ function Logs() {
             <h2 className="card-title">logs/app.log</h2>
             <p className="card-subtitle">{lines.length} lines shown. Tokens and API keys are redacted.</p>
           </div>
+          <button className="button danger" onClick={clearLogs} disabled={clearing}>{clearing ? 'Clearing...' : 'Clear logs'}</button>
         </div>
         <div className="card-body">
           <div className="log-box">
