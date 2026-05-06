@@ -71,6 +71,7 @@ const DEFAULT_PROVIDERS = [
     { key: 'goose', displayName: 'Goose CLI', cmd: 'goose' },
     { key: 'github-copilot', displayName: 'GitHub Copilot CLI', cmd: 'gh', status: 'disabled' },
     { key: 'crush', displayName: 'Crush CLI', cmd: 'crush' },
+    { key: 'command-code', displayName: 'Command Code CLI', cmd: 'command-code' },
 ];
 
 const PROVIDER_ENV_KEYS = {
@@ -83,7 +84,8 @@ const PROVIDER_ENV_KEYS = {
     aider: ['AIDER_COMMAND'],
     goose: ['GOOSE_COMMAND'],
     'github-copilot': ['GITHUB_COPILOT_COMMAND', 'GH_COMMAND'],
-    crush: ['CRUSH_COMMAND']
+    crush: ['CRUSH_COMMAND'],
+    'command-code': ['COMMAND_CODE_COMMAND', 'COMMANDCODE_COMMAND']
 };
 
 function envKeyFor(channelKey, fieldKey) {

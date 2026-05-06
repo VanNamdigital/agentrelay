@@ -5,7 +5,7 @@ const { Markup, Telegraf } = require('telegraf');
 const store = require('../config/store');
 const { prepareSpawnCommand, splitCommand } = require('../cli/detector');
 const { logDir } = require('../runtimePaths');
-const { compactText, escapeHTML, splitPlainText, summarizeOutput } = require('../utils');
+const { compactText, escapeHTML, formatDuration, parseOpenCodeRunOutput, splitPlainText, summarizeOutput } = require('../utils');
 const { redactSecrets } = require('../settingsConfig');
 const { text: botText, button: botButton, matchesButton } = require('./messages');
 
@@ -115,6 +115,17 @@ async function replyHtml(ctx, html, extra = {}) {
     }
 }
 
+function appendRuntimeLog(level, message) {
+    try {
+        fs.mkdirSync(logDir, { recursive: true });
+        fs.appendFileSync(
+            path.join(logDir, 'app.log'),
+            `${new Date().toISOString()} ${level} ${redactSecrets(message)}\n`,
+            'utf8'
+        );
+    } catch {}
+}
+
 async function showMainMenu(ctx) {
     const providers = getEnabledProviders();
     const providerText = providers.length
@@ -168,7 +179,17 @@ async function showStatus(ctx, session) {
         `${botText('bot.project')}: ${session.projectPath ? `<code>${escapeHTML(session.projectPath)}</code>` : botText('bot.notSelected')}`,
         `${botText('bot.running')}: ${session.running ? botText('bot.yes') : botText('bot.no')}`
     ];
-    if (task) status.push(`PID: <code>${escapeHTML(task.pid || '')}</code>`);
+    if (task) {
+        const elapsed = formatDuration((Date.now() - task.startedAt) / 1000);
+        const lastOutputAt = Math.max(task.lastOutputAt || 0, task.lastErrorAt || 0);
+        const outputStatus = lastOutputAt
+            ? `${formatDuration((Date.now() - lastOutputAt) / 1000)} ago`
+            : 'waiting for CLI output';
+        status.push(`PID: <code>${escapeHTML(task.pid || '')}</code>`);
+        status.push(`Elapsed: ${escapeHTML(elapsed)}`);
+        status.push(`CLI output: ${escapeHTML(outputStatus)}`);
+        if (task.progressNote) status.push(`Progress: ${escapeHTML(task.progressNote)}`);
+    }
     await replyHtml(ctx, status.join('\n'), mainKeyboard());
 }
 
@@ -217,7 +238,37 @@ function buildRunCommand(provider, modelName, projectPath, prompt) {
         };
     }
 
+    if (provider.key === 'command-code') {
+        return {
+            file: parsed.file,
+            args: [
+                ...parsed.args,
+                '--print',
+                prompt,
+                '--trust',
+                '--skip-onboarding',
+                '--auto-accept'
+            ]
+        };
+    }
+
     return null;
+}
+
+function terminateProcessTree(child) {
+    if (!child || !child.pid || child.killed) return;
+
+    if (process.platform === 'win32') {
+        spawn('taskkill.exe', ['/pid', String(child.pid), '/t', '/f'], {
+            windowsHide: true,
+            stdio: 'ignore'
+        }).on('error', () => {
+            try { child.kill('SIGTERM'); } catch {}
+        });
+        return;
+    }
+
+    try { child.kill('SIGTERM'); } catch {}
 }
 
 async function runPrompt(ctx, session, prompt) {
@@ -260,45 +311,222 @@ async function runPrompt(ctx, session, prompt) {
         cwd: session.projectPath,
         windowsHide: true,
         shell: false,
+        stdio: ['ignore', 'pipe', 'pipe'],
         env: process.env
     });
 
     let output = '';
     let errorOutput = '';
+    let finishing = false;
+    let finishGraceTimer = null;
+    let progressTimer = null;
+    let closed = false;
+    const progressState = {
+        lastSentAt: Date.now(),
+        lastReportedBytes: 0,
+        openCodeSessionNotified: false,
+        openCodeTextNotified: false,
+        openCodeToolCount: 0
+    };
+    const task = {
+        child,
+        pid: child.pid,
+        startedAt: Date.now(),
+        providerKey: provider.key,
+        modelName: model.model_name,
+        lastOutputAt: 0,
+        lastErrorAt: 0,
+        outputBytes: 0,
+        errorBytes: 0,
+        progressNote: 'starting'
+    };
     session.running = true;
-    session.currentTask = { child, pid: child.pid, startedAt: Date.now(), providerKey: provider.key, modelName: model.model_name };
+    session.currentTask = task;
+    appendRuntimeLog('INFO', `task started provider=${provider.key} model=${model.model_name} pid=${child.pid} project=${session.projectPath}`);
+
+    function elapsed() {
+        return formatDuration((Date.now() - task.startedAt) / 1000);
+    }
+
+    function markProgress(note) {
+        task.progressNote = compactText(note).slice(0, 180);
+    }
+
+    function sendProgress(html, logMessage) {
+        if (closed) return;
+        progressState.lastSentAt = Date.now();
+        markProgress(logMessage || html);
+        appendRuntimeLog('INFO', `task progress provider=${provider.key} pid=${child.pid} ${logMessage || compactText(html)}`);
+        replyHtml(ctx, html).catch(() => {});
+    }
+
+    function currentProviderPreview() {
+        if (provider.key === 'opencode') {
+            const parsed = parseOpenCodeRunOutput(output);
+            return parsed.text || parsed.errors.join('\n') || errorOutput || '';
+        }
+        return `${output}\n${errorOutput}`.trim();
+    }
+
+    function sendOpenCodeToolProgress(toolEvent) {
+        const preview = toolEvent.preview
+            ? `\n<code>${escapeHTML(redactSecrets(toolEvent.preview))}</code>`
+            : '';
+        sendProgress(
+            botText('bot.openCodeToolProgress', {
+                preview,
+                status: escapeHTML(toolEvent.status || 'updated'),
+                title: escapeHTML(toolEvent.title || 'tool'),
+                tool: escapeHTML(toolEvent.tool || 'tool')
+            }),
+            `opencode tool ${toolEvent.tool || 'tool'} ${toolEvent.status || 'updated'} title=${toolEvent.title || ''} preview=${toolEvent.preview || ''}`
+        );
+    }
+
+    function requestTerminate(reason, graceMs = 0) {
+        if (finishing) return;
+        finishing = true;
+        task.finishReason = reason;
+        markProgress(reason);
+        if (graceMs > 0) {
+            finishGraceTimer = setTimeout(() => terminateProcessTree(child), graceMs);
+            if (finishGraceTimer.unref) finishGraceTimer.unref();
+            return;
+        }
+        terminateProcessTree(child);
+    }
+
+    function handleProviderOutput() {
+        if (provider.key !== 'opencode') return;
+
+        const parsed = parseOpenCodeRunOutput(output);
+        if (parsed.stepStarted && !progressState.openCodeSessionNotified) {
+            progressState.openCodeSessionNotified = true;
+            const sessionID = parsed.sessionID || 'unknown';
+            sendProgress(
+                botText('bot.openCodeSessionStarted', { session: escapeHTML(sessionID) }),
+                `opencode session started session=${sessionID}`
+            );
+        }
+        if (parsed.textStarted && !parsed.completed && !progressState.openCodeTextNotified && Date.now() - task.startedAt > 20000) {
+            progressState.openCodeTextNotified = true;
+            sendProgress(
+                botText('bot.openCodeTextStarted'),
+                'opencode text stream started'
+            );
+        }
+        if (parsed.toolCount > progressState.openCodeToolCount) {
+            for (const toolEvent of parsed.toolEvents.slice(progressState.openCodeToolCount)) {
+                sendOpenCodeToolProgress(toolEvent);
+            }
+            progressState.openCodeToolCount = parsed.toolCount;
+        }
+        if (parsed.toolUsed && parsed.finishReason === 'tool-calls') {
+            markProgress('opencode tool step finished; waiting final answer');
+        }
+        if (parsed.completed) {
+            task.openCodeCompleted = true;
+            task.openCodeSessionID = parsed.sessionID;
+            requestTerminate('opencode-complete', 1500);
+        }
+    }
 
     const timeout = setTimeout(() => {
-        session.currentTask.timedOut = true;
-        child.kill('SIGTERM');
+        task.timedOut = true;
+        requestTerminate('timeout');
     }, timeoutMinutes * 60 * 1000);
 
+    progressTimer = setInterval(() => {
+        if (closed) return;
+        const totalBytes = output.length + errorOutput.length;
+        const sinceLastProgress = Date.now() - progressState.lastSentAt;
+
+        if (totalBytes === 0) {
+            if (sinceLastProgress >= 30000) {
+                sendProgress(
+                    botText('bot.taskWaitingNoOutput', {
+                        elapsed: escapeHTML(elapsed()),
+                        pid: escapeHTML(child.pid || '')
+                    }),
+                    `waiting no-output elapsed=${elapsed()}`
+                );
+            }
+            return;
+        }
+
+        if (totalBytes !== progressState.lastReportedBytes && sinceLastProgress >= 45000) {
+            progressState.lastReportedBytes = totalBytes;
+            const summary = summarizeOutput(currentProviderPreview(), redactSecrets);
+            if (summary.preview) {
+                sendProgress(
+                    botText('bot.taskProgress', {
+                        elapsed: escapeHTML(elapsed()),
+                        preview: escapeHTML(summary.preview)
+                    }),
+                    `output preview elapsed=${elapsed()} bytes=${totalBytes} preview=${summary.preview.slice(0, 240)}`
+                );
+                return;
+            }
+            sendProgress(
+                botText('bot.taskOutputSeen', { elapsed: escapeHTML(elapsed()) }),
+                `output seen elapsed=${elapsed()} bytes=${totalBytes}`
+            );
+        }
+    }, 15000);
+    if (progressTimer.unref) progressTimer.unref();
+
     child.stdout.on('data', chunk => {
-        output += chunk.toString();
+        const text = chunk.toString();
+        output += text;
+        task.lastOutputAt = Date.now();
+        task.outputBytes = output.length;
+        markProgress(`stdout ${task.outputBytes} bytes`);
+        handleProviderOutput();
     });
 
     child.stderr.on('data', chunk => {
-        errorOutput += chunk.toString();
+        const text = chunk.toString();
+        errorOutput += text;
+        task.lastErrorAt = Date.now();
+        task.errorBytes = errorOutput.length;
+        markProgress(`stderr ${task.errorBytes} bytes`);
     });
 
     child.on('error', async error => {
+        closed = true;
         clearTimeout(timeout);
+        if (finishGraceTimer) clearTimeout(finishGraceTimer);
+        if (progressTimer) clearInterval(progressTimer);
         session.running = false;
         session.currentTask = null;
+        appendRuntimeLog('ERROR', `task failed to start provider=${provider.key} pid=${child.pid || ''} error=${error.message}`);
         await replyHtml(ctx, botText('bot.failedStart', { error: escapeHTML(error.message) }), mainKeyboard());
     });
 
     child.on('close', async code => {
+        closed = true;
         clearTimeout(timeout);
-        const timedOut = session.currentTask?.timedOut;
+        if (finishGraceTimer) clearTimeout(finishGraceTimer);
+        if (progressTimer) clearInterval(progressTimer);
+        const closedTask = session.currentTask || task;
+        const timedOut = closedTask?.timedOut;
         session.running = false;
         session.currentTask = null;
 
-        const summary = summarizeOutput(`${output}\n${errorOutput}`.trim(), redactSecrets);
+        const openCodeResult = provider.key === 'opencode' ? parseOpenCodeRunOutput(output) : null;
+        const completedByOpenCode = Boolean(openCodeResult?.completed || closedTask?.openCodeCompleted);
+        const resultText = openCodeResult?.text
+            || openCodeResult?.errors?.join('\n')
+            || (provider.key === 'opencode'
+                ? botText('bot.noFinalAnswer', { code })
+                : `${output}\n${errorOutput}`.trim());
+        const summary = summarizeOutput(resultText, redactSecrets);
+        const displayCode = completedByOpenCode && (code === null || code !== 0) ? 0 : code;
         const header = timedOut
             ? botText('bot.taskCancelled', { minutes: timeoutMinutes })
-            : botText('bot.taskFinished', { code });
+            : botText('bot.taskFinished', { code: displayCode });
         const body = summary.preview ? `\n\n<pre><code>${escapeHTML(summary.preview)}</code></pre>` : '';
+        appendRuntimeLog('INFO', `task finished provider=${provider.key} pid=${child.pid || ''} code=${displayCode} timedOut=${Boolean(timedOut)} preview=${summary.preview.slice(0, 500)}`);
         await replyHtml(ctx, `<b>${escapeHTML(header)}</b>${body}`, mainKeyboard());
     });
 
@@ -359,7 +587,9 @@ async function handleText(ctx) {
     if (matchesButton(text, 'cancel')) {
         if (session.running && session.currentTask?.child) {
             session.currentTask.cancelled = true;
-            session.currentTask.child.kill('SIGTERM');
+            session.currentTask.progressNote = 'cancel requested';
+            appendRuntimeLog('INFO', `task cancel requested pid=${session.currentTask.pid || ''} provider=${session.currentTask.providerKey || ''}`);
+            terminateProcessTree(session.currentTask.child);
             await replyHtml(ctx, botText('bot.cancelRequested'), mainKeyboard());
         } else {
             await replyHtml(ctx, botText('bot.noTask'), mainKeyboard());

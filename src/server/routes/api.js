@@ -574,19 +574,23 @@ router.get('/cli-providers', (req, res) => {
     res.json(store.getCliProviders().map(serializeProvider));
 });
 
-router.post('/cli-providers/scan', authMiddleware.requireChangePassword, (req, res) => {
-    const results = detector.scanAndSave();
-    res.json({ success: true, results, providers: store.getCliProviders().map(serializeProvider) });
+router.post('/cli-providers/scan', authMiddleware.requireChangePassword, async (req, res) => {
+    try {
+        const results = await detector.scanAndSave();
+        res.json({ success: true, results, providers: store.getCliProviders().map(serializeProvider) });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message || 'CLI scan failed' });
+    }
 });
 
-router.post('/cli-providers/:key/test-command', authMiddleware.requireChangePassword, (req, res) => {
+router.post('/cli-providers/:key/test-command', authMiddleware.requireChangePassword, async (req, res) => {
     const key = req.params.key;
     if (!detector.ALLOWED_PROVIDER_KEYS.has(key)) return res.status(404).json({ success: false, error: 'Provider not found' });
     const provider = store.getCliProviderByKey(key);
     const command = String(req.body.command || provider?.command || '').trim();
     if (!command) return res.status(400).json({ success: false, error: 'No command to test' });
 
-    const result = detector.testCommand(command);
+    const result = await detector.testCommand(command);
     if (result.success) {
         store.updateCliProviderByKey(key, {
             command,
@@ -632,15 +636,16 @@ router.get('/cli-providers/:key/models', (req, res) => {
     res.json(store.getModels(req.params.key));
 });
 
-router.post('/cli-providers/:key/models/detect', authMiddleware.requireChangePassword, (req, res) => {
+router.post('/cli-providers/:key/models/detect', authMiddleware.requireChangePassword, async (req, res) => {
     const key = req.params.key;
     if (!detector.ALLOWED_PROVIDER_KEYS.has(key)) return res.status(404).json({ success: false, error: 'Provider not found' });
     const provider = store.getCliProviderByKey(key);
     let detected = [];
-    if (key === 'opencode') detected = detector.fetchOpenCodeModels(provider?.command || 'opencode');
-    else if (key === 'codex') detected = detector.fetchCodexModels();
-    else if (key === 'claude') detected = detector.fetchClaudeModelSuggestions();
-    const added = detected.map(model => ({ model_name: model, id: store.addModel(key, model, model, key === 'claude' ? 'default' : 'detected') }));
+    if (key === 'opencode') detected = await detector.fetchOpenCodeModels(provider?.command || 'opencode');
+    else if (key === 'codex') detected = await detector.fetchCodexModels();
+    else if (key === 'claude') detected = await detector.fetchClaudeModelSuggestions();
+    else if (key === 'command-code') detected = await detector.fetchCommandCodeModels();
+    const added = detected.map(model => ({ model_name: model, id: store.addModel(key, model, model, ['claude', 'command-code'].includes(key) ? 'default' : 'detected') }));
     res.json({ success: true, detected: added, models: store.getModels(key) });
 });
 

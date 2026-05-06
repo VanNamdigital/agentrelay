@@ -431,6 +431,11 @@ button {
   color: #e11d48;
 }
 
+.provider-icon-command-code {
+  background: #111827;
+  color: #f9fafb;
+}
+
 .provider-name {
   margin: 0;
   font-size: 13px;

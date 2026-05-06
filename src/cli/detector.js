@@ -1,4 +1,4 @@
-const { spawnSync } = require('child_process');
+const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const store = require('../config/store');
@@ -14,6 +14,7 @@ const ALL_PROVIDERS = [
     { key: 'goose', displayName: 'Goose CLI', command: 'goose', aliases: ['goose', 'goose.cmd', 'goose.ps1', 'goose.exe'], versionFlag: '--version' },
     { key: 'github-copilot', displayName: 'GitHub Copilot CLI', command: 'gh', aliases: ['gh', 'gh.cmd', 'gh.exe'], versionFlag: '--version' },
     { key: 'crush', displayName: 'Crush CLI', command: 'crush', aliases: ['crush', 'crush.cmd', 'crush.ps1', 'crush.exe'], versionFlag: '--version' },
+    { key: 'command-code', displayName: 'Command Code CLI', command: 'command-code', aliases: ['command-code', 'commandcode', 'command-code.cmd', 'commandcode.cmd', 'command-code.ps1', 'commandcode.ps1', 'command-code.exe', 'commandcode.exe'], versionFlag: '--version' },
 ];
 
 const ALLOWED_PROVIDER_KEYS = new Set(ALL_PROVIDERS.map(provider => provider.key));
@@ -167,19 +168,7 @@ function getCommandCandidates(command) {
         return fs.existsSync(text) ? [text] : [];
     }
 
-    const locator = process.platform === 'win32' ? 'where' : 'which';
-    const result = spawnSync(locator, [text], {
-        timeout: 5000,
-        encoding: 'utf8',
-        windowsHide: true,
-        shell: false
-    });
-    const located = result.error || result.status !== 0
-        ? []
-        : `${result.stdout || ''}${result.stderr || ''}`
-            .split(/\r?\n/)
-            .map(line => line.trim())
-            .filter(Boolean);
+    const located = getDirectoryCommandCandidates(text, getPathDirs());
     const extra = getDirectoryCommandCandidates(text, getExtraSearchDirs());
     if (process.platform !== 'win32') return [...new Set([...located, ...extra])];
     return [...new Set([...located, ...getWindowsPathCandidates(text), ...extra])];
@@ -209,8 +198,29 @@ function quoteCmdArg(value) {
     return `"${text.replace(/(["^&|<>%])/g, '^$1')}"`;
 }
 
-function prepareSpawnCommand(file, args = []) {
-    const resolvedFile = resolveCommand(file);
+function resolveNpmCmdNodeScript(resolvedFile) {
+    if (process.platform !== 'win32') return '';
+    if (path.extname(resolvedFile).toLowerCase() !== '.cmd') return '';
+
+    let content = '';
+    try {
+        content = fs.readFileSync(resolvedFile, 'utf8');
+    } catch {
+        return '';
+    }
+
+    const match = content.match(/"%dp0%[\\/](node_modules[^\"]+)"\s+%[*0-9]/i);
+    if (!match) return '';
+
+    const scriptPath = path.join(path.dirname(resolvedFile), match[1]);
+    try {
+        return fs.existsSync(scriptPath) && fs.statSync(scriptPath).isFile() ? scriptPath : '';
+    } catch {
+        return '';
+    }
+}
+
+function buildSpawnCommand(resolvedFile, args = []) {
     if (!resolvedFile) return null;
 
     if (process.platform === 'win32') {
@@ -223,14 +233,15 @@ function prepareSpawnCommand(file, args = []) {
             };
         }
         if (ext === '.cmd' || ext === '.bat') {
-            const psScript = resolvedFile.replace(/\.(cmd|bat)$/i, '.ps1');
-            if (fs.existsSync(psScript)) {
+            const nodeScript = resolveNpmCmdNodeScript(resolvedFile);
+            if (nodeScript) {
                 return {
-                    file: 'powershell.exe',
-                    args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', psScript, ...args],
+                    file: process.execPath,
+                    args: [nodeScript, ...args],
                     resolvedPath: resolvedFile
                 };
             }
+
             return {
                 file: process.env.ComSpec || 'cmd.exe',
                 args: ['/d', '/s', '/c', [resolvedFile, ...args].map(quoteCmdArg).join(' ')],
@@ -242,25 +253,78 @@ function prepareSpawnCommand(file, args = []) {
     return { file: resolvedFile, args, resolvedPath: resolvedFile };
 }
 
-function runCommand(file, args = [], timeout = 5000) {
-    const prepared = prepareSpawnCommand(file, args);
+function prepareSpawnCommand(file, args = []) {
+    return buildSpawnCommand(resolveCommand(file), args);
+}
+
+function runPreparedCommand(prepared, timeout = 5000) {
     if (!prepared) return { success: false, output: '', error: 'Invalid command' };
 
-    const result = spawnSync(prepared.file, prepared.args, {
-        timeout,
-        encoding: 'utf8',
-        windowsHide: true,
-        shell: false
-    });
+    return new Promise(resolve => {
+        let stdout = '';
+        let stderr = '';
+        let settled = false;
+        let timedOut = false;
+        let child;
+        let timer;
 
-    const output = `${result.stdout || ''}${result.stderr || ''}`.trim();
-    if (result.error) {
-        return { success: false, output, error: result.error.message, resolvedPath: prepared.resolvedPath };
-    }
-    if (typeof result.status === 'number' && result.status !== 0) {
-        return { success: false, output, error: output || `Exited with code ${result.status}`, resolvedPath: prepared.resolvedPath };
-    }
-    return { success: true, output, resolvedPath: prepared.resolvedPath };
+        function output() {
+            return `${stdout || ''}${stderr || ''}`.trim();
+        }
+
+        function settle(result) {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            resolve(result);
+        }
+
+        try {
+            child = spawn(prepared.file, prepared.args, {
+                windowsHide: true,
+                shell: false,
+                stdio: ['ignore', 'pipe', 'pipe']
+            });
+        } catch (error) {
+            settle({ success: false, output: '', error: error.message, resolvedPath: prepared.resolvedPath });
+            return;
+        }
+
+        timer = setTimeout(() => {
+            timedOut = true;
+            if (child && !child.killed) child.kill('SIGTERM');
+        }, timeout);
+        if (timer.unref) timer.unref();
+
+        child.stdout.on('data', chunk => {
+            stdout += chunk.toString();
+        });
+
+        child.stderr.on('data', chunk => {
+            stderr += chunk.toString();
+        });
+
+        child.on('error', error => {
+            settle({ success: false, output: output(), error: error.message, resolvedPath: prepared.resolvedPath });
+        });
+
+        child.on('close', status => {
+            const text = output();
+            if (timedOut) {
+                settle({ success: false, output: text, error: `Timed out after ${timeout}ms`, resolvedPath: prepared.resolvedPath });
+                return;
+            }
+            if (typeof status === 'number' && status !== 0) {
+                settle({ success: false, output: text, error: text || `Exited with code ${status}`, resolvedPath: prepared.resolvedPath });
+                return;
+            }
+            settle({ success: true, output: text, resolvedPath: prepared.resolvedPath });
+        });
+    });
+}
+
+function runCommand(file, args = [], timeout = 5000) {
+    return runPreparedCommand(prepareSpawnCommand(file, args), timeout);
 }
 
 function findCommand(command) {
@@ -272,7 +336,7 @@ function findCommand(command) {
     };
 }
 
-function detectCli(providerInfo) {
+async function detectCli(providerInfo) {
     const { command: cmdName, versionFlag } = providerInfo;
     const commands = providerInfo.aliases || [cmdName];
     const result = {
@@ -303,7 +367,7 @@ function detectCli(providerInfo) {
     result.path = found.path;
     result.command = selectedCommand;
 
-    const version = runCommand(selectedCommand, [versionFlag], 3000);
+    const version = await runPreparedCommand(buildSpawnCommand(found.path, [versionFlag]), 3000);
     if (version.success) {
         result.version = version.output.split(/\r?\n/)[0] || '';
     }
@@ -312,11 +376,11 @@ function detectCli(providerInfo) {
 }
 
 function detectAllClis() {
-    return ALL_PROVIDERS.map(detectCli);
+    return Promise.all(ALL_PROVIDERS.map(detectCli));
 }
 
-function scanAndSave() {
-    const results = detectAllClis();
+async function scanAndSave() {
+    const results = await detectAllClis();
     const now = new Date().toISOString();
     for (const result of results) {
         store.updateCliProviderByKey(result.key, {
@@ -345,10 +409,10 @@ function getCachedDetection() {
     }));
 }
 
-function fetchOpenCodeModels(command = 'opencode') {
+async function fetchOpenCodeModels(command = 'opencode') {
     const parsed = splitCommand(command);
     if (!parsed) return [];
-    const result = runCommand(parsed.file, [...parsed.args, 'models'], 15000);
+    const result = await runCommand(parsed.file, [...parsed.args, 'models'], 15000);
     if (!result.success) return [];
     const matches = result.output.match(/[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.:+-]*/g) || [];
     return [...new Set(matches)]
@@ -360,17 +424,21 @@ function fetchCodexModels() {
     return [];
 }
 
+function fetchCommandCodeModels() {
+    return ['default'];
+}
+
 function fetchClaudeModelSuggestions() {
     return ['claude-3-5-sonnet', 'claude-3-7-sonnet', 'claude-sonnet-4', 'claude-opus-4'];
 }
 
-function testCommand(command, timeoutMs = 10000) {
+async function testCommand(command, timeoutMs = 10000) {
     const parsed = splitCommand(command);
     if (!parsed) {
         return { success: false, error: 'Invalid command', command };
     }
 
-    const result = runCommand(parsed.file, [...parsed.args, '--version'], timeoutMs);
+    const result = await runCommand(parsed.file, [...parsed.args, '--version'], timeoutMs);
     if (!result.success) {
         return { success: false, error: result.error || 'Command test failed', output: result.output, command };
     }
@@ -391,6 +459,7 @@ module.exports = {
     detectAllClis,
     fetchClaudeModelSuggestions,
     fetchCodexModels,
+    fetchCommandCodeModels,
     fetchOpenCodeModels,
     getCachedDetection,
     prepareSpawnCommand,

@@ -9,6 +9,7 @@ import {
     formatDuration,
     isProviderModel,
     parseOpenCodeModels,
+    parseOpenCodeRunOutput,
     summarizeOutput,
     toolStatusLabel
 } from '../src/utils.js';
@@ -170,6 +171,62 @@ describe('parseOpenCodeModels', () => {
     it('should handle empty output', () => {
         expect(parseOpenCodeModels('')).toEqual([]);
         expect(parseOpenCodeModels('No models found')).toEqual([]);
+    });
+});
+
+describe('parseOpenCodeRunOutput', () => {
+    it('extracts text and completion from JSON events', () => {
+        const output = [
+            '{"type":"step_start","sessionID":"ses_123","part":{"type":"step-start"}}',
+            '{"type":"text","sessionID":"ses_123","part":{"type":"text","text":"OK"}}',
+            '{"type":"step_finish","sessionID":"ses_123","part":{"type":"step-finish","reason":"stop"}}'
+        ].join('\n');
+
+        expect(parseOpenCodeRunOutput(output)).toEqual({
+            completed: true,
+            errors: [],
+            finishReason: 'stop',
+            sessionID: 'ses_123',
+            stepStarted: true,
+            textStarted: true,
+            toolCount: 0,
+            toolEvents: [],
+            toolUsed: false,
+            text: 'OK'
+        });
+    });
+
+    it('ignores non-json lines', () => {
+        const result = parseOpenCodeRunOutput('noise\n{"type":"text","part":{"type":"text","text":"hello"}}');
+        expect(result.completed).toBe(false);
+        expect(result.stepStarted).toBe(false);
+        expect(result.textStarted).toBe(true);
+        expect(result.toolCount).toBe(0);
+        expect(result.toolEvents).toEqual([]);
+        expect(result.toolUsed).toBe(false);
+        expect(result.text).toBe('hello');
+    });
+
+    it('does not treat tool-call step finishes as final completion', () => {
+        const output = [
+            '{"type":"step_start","sessionID":"ses_123","part":{"type":"step-start"}}',
+            '{"type":"tool_use","sessionID":"ses_123","part":{"type":"tool","tool":"task","callID":"call_1","state":{"status":"completed","input":{"description":"Explore codebase structure"},"output":"task_id: abc\\n\\n<task_result>\\nTool output summary\\n</task_result>"}}}',
+            '{"type":"step_finish","sessionID":"ses_123","part":{"type":"step-finish","reason":"tool-calls"}}'
+        ].join('\n');
+
+        const result = parseOpenCodeRunOutput(output);
+        expect(result.completed).toBe(false);
+        expect(result.finishReason).toBe('tool-calls');
+        expect(result.toolCount).toBe(1);
+        expect(result.toolEvents).toEqual([{
+            callID: 'call_1',
+            preview: 'Tool output summary',
+            status: 'completed',
+            title: 'Explore codebase structure',
+            tool: 'task'
+        }]);
+        expect(result.toolUsed).toBe(true);
+        expect(result.text).toBe('');
     });
 });
 

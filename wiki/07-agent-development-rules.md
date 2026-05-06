@@ -1,6 +1,6 @@
 # Agent Development Rules
 
-> Last updated: 2026-04-30
+> Last updated: 2026-05-06
 
 ## 1. Context Loading Order
 
@@ -11,7 +11,7 @@ For a new task, read:
 3. `wiki/08-tech-debt-and-risks.md` for refactor/hardening work
 4. `wiki/09-upgrade-roadmap.md` for sequencing
 5. Relevant source files under `src/`
-6. `README.md` and `.env.example` when setup/config changes
+6. `README.md`, `docs/`, and `.env.example` when setup/config/user-facing docs change
 
 Do not use the removed root `index.js` as a source of truth.
 
@@ -24,6 +24,8 @@ Do not use the removed root `index.js` as a source of truth.
 - CLI detection: `src/cli/detector.js`
 - Shared helpers: `src/utils.js`, `src/settingsConfig.js`
 - React SPA source: `dashboard/`
+- Public docs: `docs/`
+- Internal docs: `wiki/`
 
 New runtime work should land in `src/`, not in repo-root scripts unless it is a developer utility.
 
@@ -31,7 +33,8 @@ New runtime work should land in `src/`, not in repo-root scripts unless it is a 
 
 - Identify the layer: bot, CLI, API, DB, auth, UI, docs, or runtime.
 - Check `.env.example` when adding/changing environment variables.
-- Update `README.md` and `wiki/00-source-of-truth.md` when architecture/setup changes.
+- Update `README.md` and `docs/` when user-facing setup or behavior changes.
+- Update `wiki/00-source-of-truth.md` when architecture, provider scope, or runtime behavior changes.
 - Do not read, print, copy, or document real secrets from `.env`.
 - Preserve the SQLite-backed configuration model unless the roadmap explicitly changes it.
 
@@ -65,17 +68,17 @@ If startup behavior changed, smoke test with a real `SESSION_SECRET` in the envi
 ## 6. Forbidden Actions
 
 - Do not reintroduce a root `index.js` monolith.
-- Do not commit `.env`, `logs/`, `data/`, `node_modules/`, or generated SQLite/session files.
+- Do not commit `.env`, `logs/`, `data/`, `node_modules/`, `dashboard/node_modules/`, `public/dashboard/`, or generated SQLite/session files.
 - Do not hardcode Telegram IDs, tokens, API keys, or private project paths.
 - Do not expose raw long CLI output directly to Telegram without chunking/summarizing.
 - Do not add unauthenticated admin/API routes.
 - Do not use `origin: true` CORS.
 - Do not add a hardcoded fallback for `SESSION_SECRET`.
-- Do not create new root dashboard docs; consolidate docs in `wiki/`.
+- Do not put internal architecture/risk/roadmap notes in `docs/`; keep those in `wiki/`.
 
 ## 7. Required Security Behavior
 
-- All admin routes must use the auth middleware unless intentionally public.
+- All admin routes must use auth middleware unless intentionally public.
 - API responses and log views must redact secret-looking values.
 - New form/API routes must validate input before writing to SQLite or launching commands.
 - New CLI execution code must have timeout and cancellation paths.
@@ -93,15 +96,27 @@ Update provider metadata in:
 
 - `src/config/store.js`
 - `src/cli/detector.js`
-- admin/API routes if a new provider needs custom behavior
+- `src/bot/index.js` if Telegram execution should be supported
+- `src/server/routes/api.js` if a provider needs custom model discovery behavior
+- `dashboard/src/pages/CLIProviders.jsx` for provider visuals
+- `images/provider-icons/` for README/docs assets
+- `.env.example`, `docs/providers.md`, and `wiki/00-source-of-truth.md`
+
+Avoid using ambiguous Windows command aliases such as `cmd` for provider defaults.
 
 ### API Routes
 
-Add new routes under `src/server/routes/`, keep auth explicit, and add validation. If a route is consumed by React, document it in the source-of-truth or future OpenAPI spec.
+Add new routes under `src/server/routes/`, keep auth explicit, and add validation. If a route is consumed by React, document it in source-of-truth or a future OpenAPI spec.
 
 ### UI Changes
 
 All admin UI work targets the React SPA under `dashboard/`. Do not add a second server-rendered dashboard path.
+
+### Documentation Changes
+
+- `README.md`: concise landing page only.
+- `docs/`: public user and contributor documentation.
+- `wiki/`: internal source-of-truth, roadmap, risks, and agent rules.
 
 ## 9. Review Checklist
 
@@ -109,5 +124,5 @@ All admin UI work targets the React SPA under `dashboard/`. Do not add a second 
 - Tests/checks pass or failures are documented.
 - Secrets are not printed in output, docs, or logs.
 - `.env.example` matches new env requirements.
-- Docs are updated when architecture/setup changes.
-- Deleted old docs are not replaced with new conflicting root docs.
+- Public docs and wiki are updated when architecture/setup changes.
+- Lockfile changes are intentional, not local npm metadata churn.

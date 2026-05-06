@@ -124,6 +124,99 @@ function parseOpenCodeModels(output) {
     return [...new Set(matches)].filter(isProviderModel).sort((a, b) => a.localeCompare(b));
 }
 
+function shortOpenCodePreview(value, maxLength = 180) {
+    const lines = compactText(value)
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean)
+        .filter(line => !line.startsWith('task_id:'))
+        .filter(line => !['<task_result>', '</task_result>', '---'].includes(line));
+    const text = (lines[0] || compactText(value)).replace(/\s+/g, ' ').trim();
+    if (!text) return '';
+    return text.length > maxLength ? `${text.slice(0, maxLength - 3).trimEnd()}...` : text;
+}
+
+function parseOpenCodeRunOutput(output) {
+    const lines = compactText(output).split('\n').map(line => line.trim()).filter(Boolean);
+    const textParts = [];
+    const errors = [];
+    const toolEvents = [];
+    let completed = false;
+    let finishReason = '';
+    let sessionID = '';
+    let stepStarted = false;
+    let textStarted = false;
+    let toolUsed = false;
+
+    for (const line of lines) {
+        if (!line.startsWith('{')) continue;
+
+        let event;
+        try {
+            event = JSON.parse(line);
+        } catch {
+            continue;
+        }
+
+        const part = event.part || {};
+        const type = event.type || part.type || '';
+        if (!sessionID && (event.sessionID || part.sessionID)) {
+            sessionID = event.sessionID || part.sessionID;
+        }
+
+        if (type === 'step_start' || part.type === 'step-start') {
+            stepStarted = true;
+            continue;
+        }
+
+        if ((type === 'text' || part.type === 'text') && typeof part.text === 'string') {
+            textStarted = true;
+            textParts.push(part.text);
+            continue;
+        }
+
+        if (type === 'tool_use' || type === 'tool' || part.type === 'tool') {
+            toolUsed = true;
+            const state = part.state || event.state || {};
+            const input = state.input || {};
+            const title = state.title || input.description || input.command || input.prompt || part.tool || 'tool';
+            const preview = shortOpenCodePreview(state.output || state.error || part.text || '');
+            toolEvents.push({
+                callID: part.callID || event.callID || '',
+                preview,
+                status: state.status || event.status || '',
+                title: shortOpenCodePreview(title, 96) || 'tool',
+                tool: part.tool || event.tool || 'tool'
+            });
+            continue;
+        }
+
+        if (type === 'step_finish' || part.type === 'step-finish') {
+            finishReason = part.reason || event.reason || finishReason;
+            completed = Boolean(finishReason && finishReason !== 'tool-calls');
+            continue;
+        }
+
+        if (type === 'error' || part.type === 'error') {
+            const message = part.message || event.message || event.error?.message || '';
+            if (message) errors.push(message);
+        }
+    }
+
+    return {
+        completed,
+        errors,
+        finishReason,
+        sessionID,
+        stepStarted,
+        textStarted,
+        toolEvents,
+        toolCount: toolEvents.length,
+        toolUsed,
+        text: compactText(textParts.join(''))
+    };
+}
+
 function summarizeOutput(output, transform = value => value) {
     const value = compactText(transform(output));
     if (!value) return { preview: '', truncated: false, lineCount: 0 };
@@ -161,6 +254,7 @@ module.exports = {
     formatDuration,
     isProviderModel,
     parseOpenCodeModels,
+    parseOpenCodeRunOutput,
     summarizeOutput,
     toolStatusLabel
 };
