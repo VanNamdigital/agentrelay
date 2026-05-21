@@ -1,6 +1,6 @@
 {
   "name": "@vannamdigital/agentrelay",
-  "version": "2.0.6",
+  "version": "2.0.7",
   "description": "AgentRelay - Multi-provider AI CLI controller with Telegram bot and admin dashboard",
   "license": "MIT",
   "main": "src/index.js",

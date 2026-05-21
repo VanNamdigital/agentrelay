@@ -8,6 +8,7 @@ function Settings() {
   const [selectedLanguage, setSelectedLanguage] = useState(language);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     api.getGeneralSettings()
@@ -22,12 +23,15 @@ function Settings() {
     event.preventDefault();
     setError('');
     setMessage('');
+    setSaving(true);
     try {
       await api.saveGeneralSettings({ task_timeout_minutes: timeout, system_language: selectedLanguage });
       await setLanguage(selectedLanguage, { persist: false });
       setMessage(t('settings.saved'));
     } catch (err) {
       setError(err.message);
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -67,7 +71,9 @@ function Settings() {
             <span className="hint">{t('settings.languageDescription')}</span>
           </label>
           <div className="field" style={{ justifyContent: 'end' }}>
-            <button className="button primary">Save settings</button>
+            <button className="button primary" disabled={saving}>
+              {saving ? 'Saving...' : 'Save settings'}
+            </button>
           </div>
         </div>
       </form>

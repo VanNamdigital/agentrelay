@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api';
+import { Badge } from '../components/ui';
 
 function AccessControl() {
   const [users, setUsers] = useState([]);
@@ -101,9 +102,11 @@ function AccessControl() {
                         <option value="viewer">Viewer</option>
                       </select>
                     </td>
-                    <td><span className={`badge ${user.enabled ? 'green' : 'gray'}`}>{user.enabled ? 'Enabled' : 'Disabled'}</span></td>
+                    <td><Badge tone={user.enabled ? 'green' : 'gray'}>{user.enabled ? 'Enabled' : 'Disabled'}</Badge></td>
                     <td className="row-actions">
-                      <button className="button" onClick={() => update(user.id, { enabled: !user.enabled })}>{user.enabled ? 'Disable' : 'Enable'}</button>
+                      <button className="button" onClick={() => update(user.id, { enabled: !user.enabled })}>
+                        {user.enabled ? 'Disable' : 'Enable'}
+                      </button>
                       <button className="button danger" onClick={() => remove(user.id)}>Delete</button>
                     </td>
                   </tr>

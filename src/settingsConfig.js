@@ -28,6 +28,23 @@ function redactString(value) {
         .replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, '[redacted-private-key]');
 }
 
+function redactOperationalDetails(value) {
+    return String(value || '')
+        .replace(/\bTool\s+command_execution\s+(failed|completed|started|running|in_progress):\s*[^\r\n]+/gi, 'Tool command_execution $1: [local command hidden]')
+        .replace(/["'`]?[A-Za-z]:[\\/][^\r\n"'`]*?(?:powershell|pwsh|cmd|bash|sh)(?:\.exe)?["'`]?\s+(?:-Command|\/c)\s+(["'`])[^"'`\r\n]*\1/gi, '[local command hidden]')
+        .replace(/\b(?:powershell|pwsh|cmd|bash|sh)(?:\.exe)?\s+(?:-Command|\/c)\s+(["'`])[^"'`\r\n]*\1/gi, '[local command hidden]')
+        .replace(/\b[A-Za-z]:[\\/]Program Files(?: \(x86\))?(?:[\\/][^\s"'`<>|]+)*/gi, '[local-path]')
+        .replace(/(["'`])(?:[A-Za-z]:[\\/][^"'`\r\n]+)\1/g, '$1[local-path]$1')
+        .replace(/\b[A-Za-z]:[\\/](?:[^\\/\s"'`<>|]+[\\/])*[^\\/\s"'`<>|]*/g, '[local-path]')
+        .replace(/\b(?:\/Users|\/home|\/var|\/tmp|\/mnt|\/opt)\/[^\s"'`<>|]+/g, '[local-path]')
+        .replace(/\b(pid|PID|process(?:Id)?)\s*[:=]\s*\d+\b/g, '$1=[process-id]')
+        .replace(/\b(?:thread|session|conversation|task|call)_[A-Za-z0-9_-]{8,}\b/g, '[runtime-id]');
+}
+
+function redactPublicOutput(value) {
+    return redactOperationalDetails(redactString(value));
+}
+
 function redactSecrets(value, key = '') {
     if (isSecretKey(key)) return '[redacted]';
     if (Array.isArray(value)) return value.map(item => redactSecrets(item));
@@ -43,5 +60,7 @@ function redactSecrets(value, key = '') {
 module.exports = {
     SECRET_ENV_KEYS,
     isSecretKey,
-    redactSecrets
+    redactSecrets,
+    redactOperationalDetails,
+    redactPublicOutput
 };

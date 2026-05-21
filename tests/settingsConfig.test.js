@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isSecretKey, redactSecrets } from '../src/settingsConfig.js';
+import { isSecretKey, redactPublicOutput, redactSecrets } from '../src/settingsConfig.js';
 
 describe('settings config redaction', () => {
     it('detects configured and secret-looking keys', () => {
@@ -28,5 +28,18 @@ describe('settings config redaction', () => {
         expect(redactSecrets('{"apiKey":"sk-abcdefghijklmnopqrstuvwxyz"}')).toContain('[redacted]');
         expect(redactSecrets('github_pat_abcdefghijklmnopqrstuvwxyz123456')).toContain('[redacted-token]');
         expect(redactSecrets('-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----')).toContain('[redacted-private-key]');
+    });
+
+    it('redacts local commands and machine paths from bot-visible output', () => {
+        const output = redactPublicOutput(
+            'Tool command_execution failed: "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command \'rg --files -g "README*"\'\n' +
+            'Read G:\\DA\\agentrelay\\src\\server\\routes\\api.js pid=28272'
+        );
+
+        expect(output).toContain('Tool command_execution failed: [local command hidden]');
+        expect(output).toContain('[local-path]');
+        expect(output).toContain('pid=[process-id]');
+        expect(output).not.toContain('G:\\DA');
+        expect(output).not.toContain('powershell.exe');
     });
 });

@@ -5,8 +5,8 @@ const { Markup, Telegraf } = require('telegraf');
 const store = require('../config/store');
 const { prepareSpawnCommand, splitCommand } = require('../cli/detector');
 const { logDir } = require('../runtimePaths');
-const { compactText, escapeHTML, formatDuration, parseCliRunOutput, splitPlainText, summarizeOutput } = require('../utils');
-const { redactSecrets } = require('../settingsConfig');
+const { compactText, escapeHTML, formatDuration, parseCliRunOutput, renderMarkdownishToHtml, splitPlainText, summarizeOutput } = require('../utils');
+const { redactPublicOutput } = require('../settingsConfig');
 const { text: botText, button: botButton, matchesButton } = require('./messages');
 
 let bot = null;
@@ -130,12 +130,50 @@ async function replyHtml(ctx, html, extra = {}) {
     }
 }
 
+function sanitizeBotOutput(value) {
+    return redactPublicOutput(value);
+}
+
+function safeCode(value) {
+    return escapeHTML(sanitizeBotOutput(value));
+}
+
+function safeProjectLabel(projectPath) {
+    const normalized = String(projectPath || '').replace(/[\\/]+$/, '');
+    return normalized ? path.basename(normalized) || 'selected project' : '';
+}
+
+function safeToolLabel(value) {
+    return String(value || 'tool')
+        .replace(/_/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 64) || 'tool';
+}
+
+function safeToolStatus(value) {
+    const status = String(value || 'updated').toLowerCase();
+    if (/fail|error/.test(status)) return 'failed';
+    if (/complete|success|done/.test(status)) return 'completed';
+    if (/progress|running|start/.test(status)) return 'running';
+    return status.slice(0, 32) || 'updated';
+}
+
+function safeToolDetail(value) {
+    const safe = compactText(sanitizeBotOutput(value));
+    if (!safe) return '';
+    if (/\[(?:local command hidden|local-path|redacted|runtime-id)\]/i.test(safe)) {
+        return 'Local command details hidden.';
+    }
+    return safe.length > 180 ? `${safe.slice(0, 177).trimEnd()}...` : safe;
+}
+
 function appendRuntimeLog(level, message) {
     try {
         fs.mkdirSync(logDir, { recursive: true });
         fs.appendFileSync(
             path.join(logDir, 'app.log'),
-            `${new Date().toISOString()} ${level} ${redactSecrets(message)}\n`,
+            `${new Date().toISOString()} ${level} ${sanitizeBotOutput(message)}\n`,
             'utf8'
         );
     } catch {}
@@ -191,7 +229,7 @@ async function showStatus(ctx, session) {
         botText('bot.statusTitle'),
         `${botText('bot.provider')}: ${provider ? escapeHTML(providerLabel(provider)) : botText('bot.notSelected')}`,
         `${botText('bot.model')}: ${session.modelName ? escapeHTML(session.modelName) : botText('bot.notSelected')}`,
-        `${botText('bot.project')}: ${session.projectPath ? `<code>${escapeHTML(session.projectPath)}</code>` : botText('bot.notSelected')}`,
+        `${botText('bot.project')}: ${session.projectPath ? `<code>${escapeHTML(safeProjectLabel(session.projectPath))}</code>` : botText('bot.notSelected')}`,
         `${botText('bot.running')}: ${session.running ? botText('bot.yes') : botText('bot.no')}`
     ];
     if (task) {
@@ -200,10 +238,9 @@ async function showStatus(ctx, session) {
         const outputStatus = lastOutputAt
             ? `${formatDuration((Date.now() - lastOutputAt) / 1000)} ago`
             : 'waiting for CLI output';
-        status.push(`PID: <code>${escapeHTML(task.pid || '')}</code>`);
         status.push(`Elapsed: ${escapeHTML(elapsed)}`);
         status.push(`CLI output: ${escapeHTML(outputStatus)}`);
-        if (task.progressNote) status.push(`Progress: ${escapeHTML(task.progressNote)}`);
+        if (task.progressNote) status.push(`Progress: ${safeCode(task.progressNote)}`);
     }
     await replyHtml(ctx, status.join('\n'), mainKeyboard());
 }
@@ -215,7 +252,7 @@ async function showLogs(ctx) {
         return;
     }
     const lines = fs.readFileSync(logPath, 'utf8').trimEnd().split(/\r?\n/).filter(Boolean).slice(-50);
-    await replyHtml(ctx, `<pre><code>${escapeHTML(lines.map(line => redactSecrets(line)).join('\n'))}</code></pre>`, mainKeyboard());
+    await replyHtml(ctx, `<pre><code>${safeCode(lines.join('\n'))}</code></pre>`, mainKeyboard());
 }
 
 function buildRunCommand(provider, modelName, projectPath, prompt, options = {}) {
@@ -385,8 +422,8 @@ async function requestRunApproval(ctx, session, provider, model, prompt, preview
     await replyHtml(ctx, botText('bot.runApprovalRequired', {
         provider: escapeHTML(providerLabel(provider)),
         model: escapeHTML(model.model_name),
-        project: escapeHTML(session.projectPath),
-        prompt: escapeHTML(compactText(preview || prompt).slice(0, 600))
+        project: escapeHTML(safeProjectLabel(session.projectPath)),
+        prompt: safeCode(compactText(preview || prompt).slice(0, 600))
     }), runApprovalKeyboard());
 }
 
@@ -534,17 +571,15 @@ async function runPrompt(ctx, session, prompt, options = {}) {
     }
 
     function sendToolProgress(toolEvent) {
-        const preview = toolEvent.preview
-            ? `\n<code>${escapeHTML(redactSecrets(toolEvent.preview))}</code>`
+        const detail = safeToolDetail(toolEvent.title || toolEvent.preview);
+        const preview = safeToolDetail(toolEvent.preview);
+        const detailLine = detail ? `\nDetail: ${escapeHTML(detail)}` : '';
+        const previewLine = preview && preview !== detail
+            ? `\n<code>${escapeHTML(preview)}</code>`
             : '';
         sendProgress(
-            botText('bot.openCodeToolProgress', {
-                preview,
-                status: escapeHTML(toolEvent.status || 'updated'),
-                title: escapeHTML(toolEvent.title || 'tool'),
-                tool: escapeHTML(toolEvent.tool || 'tool')
-            }),
-            `${provider.key} tool ${toolEvent.tool || 'tool'} ${toolEvent.status || 'updated'} title=${toolEvent.title || ''} preview=${toolEvent.preview || ''}`
+            `<b>Tool update</b>\nTool: <code>${escapeHTML(safeToolLabel(toolEvent.tool))}</code>\nStatus: <b>${escapeHTML(safeToolStatus(toolEvent.status))}</b>${detailLine}${previewLine}`,
+            `${provider.key} tool ${safeToolLabel(toolEvent.tool)} ${safeToolStatus(toolEvent.status)} detail=${detail || preview || 'hidden'}`
         );
     }
 
@@ -567,13 +602,9 @@ async function runPrompt(ctx, session, prompt, options = {}) {
         const parsed = parseCliRunOutput(provider.key, output);
         if (parsed.stepStarted && !progressState.sessionNotified) {
             progressState.sessionNotified = true;
-            const sessionID = parsed.sessionID || 'unknown';
             sendProgress(
-                botText('bot.cliSessionStarted', {
-                    provider: escapeHTML(providerRuntimeLabel()),
-                    session: escapeHTML(sessionID)
-                }),
-                `${provider.key} session started session=${sessionID}`
+                `<b>${escapeHTML(providerRuntimeLabel())} started</b>\nWaiting for model output.`,
+                `${provider.key} session started`
             );
         }
         if (parsed.textStarted && !parsed.completed && !progressState.textNotified && Date.now() - task.startedAt > 20000) {
@@ -603,7 +634,7 @@ async function runPrompt(ctx, session, prompt, options = {}) {
 
     function handleApprovalRequest(sourceText) {
         if (closed || task.awaitingApproval || !detectCliApprovalRequest(sourceText)) return;
-        const preview = summarizeOutput(sourceText, redactSecrets).preview || sourceText;
+        const preview = summarizeOutput(sourceText, sanitizeBotOutput).preview || sanitizeBotOutput(sourceText);
         if (providerAutoApproveEnabled(session, provider.key)) {
             if (task.lastAutoApprovalAt && Date.now() - task.lastAutoApprovalAt < 1000) return;
             task.approvalAutoApproved = true;
@@ -632,10 +663,7 @@ async function runPrompt(ctx, session, prompt, options = {}) {
         if (totalBytes === 0) {
             if (sinceLastProgress >= 30000) {
                 sendProgress(
-                    botText('bot.taskWaitingNoOutput', {
-                        elapsed: escapeHTML(elapsed()),
-                        pid: escapeHTML(child.pid || '')
-                    }),
+                    `<b>Still working</b>\nNo output after ${escapeHTML(elapsed())}.\nRuntime details are hidden.`,
                     `waiting no-output elapsed=${elapsed()}`
                 );
             }
@@ -644,12 +672,12 @@ async function runPrompt(ctx, session, prompt, options = {}) {
 
         if (totalBytes !== progressState.lastReportedBytes && sinceLastProgress >= 45000) {
             progressState.lastReportedBytes = totalBytes;
-            const summary = summarizeOutput(currentProviderPreview(), redactSecrets);
+            const summary = summarizeOutput(currentProviderPreview(), sanitizeBotOutput);
             if (summary.preview) {
                 sendProgress(
                     botText('bot.taskProgress', {
                         elapsed: escapeHTML(elapsed()),
-                        preview: escapeHTML(summary.preview)
+                        preview: safeCode(summary.preview)
                     }),
                     `output preview elapsed=${elapsed()} bytes=${totalBytes} preview=${summary.preview.slice(0, 240)}`
                 );
@@ -721,21 +749,19 @@ async function runPrompt(ctx, session, prompt, options = {}) {
                 || errorOutput
                 || botText('bot.noFinalAnswer', { code }))
             : (output || errorOutput || '').trim();
-        const summary = summarizeOutput(resultText, redactSecrets);
+        const summary = summarizeOutput(resultText, sanitizeBotOutput);
         const displayCode = completedByProvider && (code === null || code !== 0) ? 0 : code;
         const header = timedOut
             ? botText('bot.taskCancelled', { minutes: timeoutMinutes })
             : botText('bot.taskFinished', { code: displayCode });
-        const body = summary.preview ? `\n\n<pre><code>${escapeHTML(summary.preview)}</code></pre>` : '';
+        const body = summary.preview
+            ? `\n\n${renderMarkdownishToHtml(summary.preview)}\n\n<i>Sensitive local details were hidden.</i>`
+            : '';
         appendRuntimeLog('INFO', `task finished provider=${provider.key} pid=${child.pid || ''} code=${displayCode} timedOut=${Boolean(timedOut)} preview=${summary.preview.slice(0, 500)}`);
         await replyHtml(ctx, `<b>${escapeHTML(header)}</b>${body}`, mainKeyboard());
     });
 
-    await replyHtml(ctx, botText('bot.started', {
-        provider: escapeHTML(providerLabel(provider)),
-        model: escapeHTML(model.model_name),
-        pid: escapeHTML(child.pid || '')
-    }), mainKeyboard());
+    await replyHtml(ctx, `<b>Task started</b>\nProvider: <code>${escapeHTML(providerLabel(provider))}</code>\nModel: <code>${escapeHTML(model.model_name)}</code>\nProgress updates will be filtered before sending.`, mainKeyboard());
 }
 
 function findProviderByText(text) {
@@ -774,8 +800,8 @@ async function handleRunApproval(ctx, session, text) {
         await replyHtml(ctx, botText('bot.runApprovalRequired', {
             provider: escapeHTML(pending.providerKey),
             model: escapeHTML(pending.modelName),
-            project: escapeHTML(pending.projectPath),
-            prompt: escapeHTML(compactText(pending.preview || pending.prompt).slice(0, 600))
+            project: escapeHTML(safeProjectLabel(pending.projectPath)),
+            prompt: safeCode(compactText(pending.preview || pending.prompt).slice(0, 600))
         }), runApprovalKeyboard());
         return true;
     }
@@ -878,7 +904,7 @@ async function handleText(ctx) {
         }
         session.projectPath = project.path;
         clearSessionAutoApprovals(session);
-        await replyHtml(ctx, `${botText('bot.project')}: <code>${escapeHTML(project.path)}</code>`);
+        await replyHtml(ctx, `${botText('bot.project')}: <code>${escapeHTML(project.name || safeProjectLabel(project.path))}</code>`);
         await showProviders(ctx, session);
         return;
     }

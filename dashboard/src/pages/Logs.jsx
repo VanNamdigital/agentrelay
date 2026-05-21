@@ -45,14 +45,14 @@ function Logs() {
           <p className="page-description">Read recent application logs with filtering, search, and secret masking.</p>
         </div>
         <div className="toolbar">
-          <select className="select" value={filter} onChange={(event) => setFilter(event.target.value)}>
+          <select className="select" value={filter} onChange={(event) => setFilter(event.target.value)} style={{ width: 'auto' }}>
             <option value="all">All</option>
             <option value="info">Info</option>
             <option value="error">Error</option>
             <option value="cli">CLI</option>
             <option value="telegram">Telegram</option>
           </select>
-          <input className="input" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search logs" />
+          <input className="input" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search logs" style={{ width: 200 }} />
           <button className="button primary" onClick={load}>Refresh</button>
         </div>
       </div>
@@ -65,7 +65,9 @@ function Logs() {
             <h2 className="card-title">logs/app.log</h2>
             <p className="card-subtitle">{lines.length} lines shown. Tokens and API keys are redacted.</p>
           </div>
-          <button className="button danger" onClick={clearLogs} disabled={clearing}>{clearing ? 'Clearing...' : 'Clear logs'}</button>
+          <button className="button danger" onClick={clearLogs} disabled={clearing}>
+            {clearing ? 'Clearing...' : 'Clear logs'}
+          </button>
         </div>
         <div className="card-body">
           <div className="log-box">

@@ -14,7 +14,7 @@ const botManager = require('../../bot');
 const detector = require('../../cli/detector');
 const authMiddleware = require('../middleware/auth');
 const { hashPassword, verifyPassword } = require('../../auth/password');
-const { redactSecrets } = require('../../settingsConfig');
+const { redactPublicOutput } = require('../../settingsConfig');
 const { logDir } = require('../../runtimePaths');
 const { getUpdateInfo } = require('../../updateCheck');
 
@@ -217,6 +217,39 @@ function getBotConfigPayload() {
     };
 }
 
+function getTelegramRuntimeSnapshot() {
+    return {
+        enabled: store.getSetting('telegram_enabled', 'false') === 'true',
+        token: store.getSetting('telegram_bot_token', '')
+    };
+}
+
+function syncTelegramRuntime(previous = {}) {
+    const current = getTelegramRuntimeSnapshot();
+    const status = botManager.getStatus();
+
+    if (!current.enabled) {
+        if (status.running) {
+            return { action: 'stopped', result: botManager.stopBot() };
+        }
+        return { action: 'disabled', result: { success: true } };
+    }
+
+    if (!current.token) {
+        return { action: 'not_configured', result: { success: false, error: 'Telegram bot token is required' } };
+    }
+
+    const tokenChanged = previous.token !== undefined && previous.token !== current.token;
+    if (status.running && !tokenChanged) {
+        return { action: 'already_running', result: { success: true } };
+    }
+
+    return {
+        action: status.running ? 'restarted' : 'started',
+        result: status.running ? botManager.restartBot() : botManager.startBot()
+    };
+}
+
 function saveChannelConfig(channel, body) {
     const current = getStoredChannelConfig(channel.key);
     const currentFields = getRawChannelFields(channel);
@@ -361,7 +394,7 @@ function readLogLines({ filter = 'all', search = '', limit = 500 } = {}) {
         filtered = filtered.filter(line => line.toLowerCase().includes(needle));
     }
 
-    return filtered.map(line => redactSecrets(line));
+    return filtered.map(line => redactPublicOutput(line));
 }
 
 router.get('/auth/session', (req, res) => {
@@ -467,13 +500,15 @@ router.get('/bot/config', (req, res) => {
 });
 
 router.patch('/bot/config', authMiddleware.requireChangePassword, (req, res) => {
+    const previousTelegram = getTelegramRuntimeSnapshot();
     if (req.body.token && String(req.body.token).trim()) {
         store.setSetting('telegram_bot_token', String(req.body.token).trim());
     }
     if (req.body.enabled !== undefined) {
         store.setSetting('telegram_enabled', bool(req.body.enabled) ? 'true' : 'false');
     }
-    res.json({ success: true });
+    const runtime = syncTelegramRuntime(previousTelegram);
+    res.json({ success: true, runtime, config: getBotConfigPayload() });
 });
 
 router.patch('/bot/channels/:key', authMiddleware.requireChangePassword, (req, res) => {
@@ -482,8 +517,10 @@ router.patch('/bot/channels/:key', authMiddleware.requireChangePassword, (req, r
         return res.status(404).json({ success: false, error: 'Bot channel not found' });
     }
     const channel = getChannel(key);
-    const updated = saveChannelConfig(channel, req.body || {});
-    res.json({ success: true, channel: updated, config: getBotConfigPayload() });
+    const previousTelegram = key === 'telegram' ? getTelegramRuntimeSnapshot() : null;
+    saveChannelConfig(channel, req.body || {});
+    const runtime = key === 'telegram' ? syncTelegramRuntime(previousTelegram) : null;
+    res.json({ success: true, channel: serializeChannel(channel), config: getBotConfigPayload(), runtime });
 });
 
 router.post('/bot/test-telegram', authMiddleware.requireChangePassword, async (req, res) => {

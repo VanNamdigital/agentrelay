@@ -1,96 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
-
-function ClaudeMark() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="provider-icon-stroke">
-      {Array.from({ length: 12 }).map((_, index) => (
-        <line
-          key={index}
-          x1="12"
-          y1="4"
-          x2="12"
-          y2="9.2"
-          stroke="currentColor"
-          strokeLinecap="round"
-          strokeWidth="2.6"
-          transform={`rotate(${index * 30} 12 12)`}
-        />
-      ))}
-    </svg>
-  );
-}
-
-function GeminiMark() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="provider-icon-gemini">
-      <defs>
-        <linearGradient id="gemini-mark-gradient" x1="3" x2="21" y1="20" y2="4" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#4285f4" />
-          <stop offset=".5" stopColor="#34a853" />
-          <stop offset=".75" stopColor="#fbbc05" />
-          <stop offset="1" stopColor="#ea4335" />
-        </linearGradient>
-      </defs>
-      <path d="M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58 12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96 2.19.93 3.81 2.55t2.55 3.81" fill="url(#gemini-mark-gradient)" />
-    </svg>
-  );
-}
-
-function KiroMark() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M6 20V8.4C6 5.4 8.52 3 12 3s6 2.4 6 5.4V20l-2.35-1.75L13.55 20 12 18.25 10.45 20l-2.1-1.75L6 20Z" />
-      <circle className="provider-icon-cutout" cx="9.8" cy="10.8" r="1.3" />
-      <circle className="provider-icon-cutout" cx="14.2" cy="10.8" r="1.3" />
-    </svg>
-  );
-}
-
-function KiloCodeMark() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <rect x="3" y="3" width="18" height="18" rx="2" />
-      <path className="provider-icon-cutout" d="M7 7h2v4l3-4h2.5l-3.3 4.25L15 17h-2.5l-2.7-4.1-.8 1V17H7V7Zm9 0h2v2h-2V7Zm0 4h2v6h-2v-6Z" />
-    </svg>
-  );
-}
-
-function AiderMark() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 3 21 21h-3.7l-1.55-3.35H8.2L6.7 21H3L12 3Zm-2.4 11.65h4.8L12 9.2l-2.4 5.45Z" />
-      <path d="M17.3 5.2 20.8 3l-1.1 4.1 3.3 2.5-4.2.22-1.5 3.88-1.5-3.88-4.2-.22 3.3-2.5-1.1-4.1 3.5 2.2Z" opacity=".52" />
-    </svg>
-  );
-}
-
-function GooseMark() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M4 15.6c3.2-5.2 6.7-7.9 10.4-8.1 2.3-.12 4.2.7 5.6 2.5-2.1-.25-3.75.2-4.95 1.35 2.55.45 4.2 1.85 4.95 4.2-2.55-.95-5.08-1.07-7.6-.35-2.52.72-5.32.85-8.4.4Z" />
-      <path className="provider-icon-cutout" d="M6.9 14.1c1.75-2.25 3.85-3.8 6.3-4.65-1.55 1.25-2.45 2.83-2.7 4.75-1.1.15-2.3.12-3.6-.1Z" />
-    </svg>
-  );
-}
-
-function CrushMark() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 21s-7.2-4.28-9.38-8.76C.74 8.37 2.8 4.8 6.78 4.8c2.02 0 3.42 1.03 4.22 2.16.8-1.13 2.2-2.16 4.22-2.16 3.98 0 6.04 3.57 4.16 7.44C17.2 16.72 12 21 12 21Z" />
-      <path className="provider-icon-cutout" d="M8.4 9.2h2v2.1h2.2V9.2h2v6h-2v-2.25h-2.2v2.25h-2v-6Z" />
-    </svg>
-  );
-}
-
-function CommandCodeMark() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <rect x="3" y="3" width="18" height="18" rx="3" />
-      <path className="provider-icon-cutout" d="M7 8.2 4.8 12 7 15.8h2.15L6.95 12l2.2-3.8H7Zm10 0h-2.15l2.2 3.8-2.2 3.8H17l2.2-3.8L17 8.2ZM10.6 17.2h2.05l.75-10.4h-2.05l-.75 10.4Z" />
-    </svg>
-  );
-}
+import { Badge, Switch as SwitchComponent } from '../components/ui';
+import {
+  AiderMark, ClaudeMark, CommandCodeMark, CrushMark, GeminiMark,
+  GooseMark, KiloCodeMark, KiroMark,
+  GithubMark, GoogleMark, OpenAIMark, AnthropicMark, MistralMark,
+  LangChainMark, HuggingFaceMark
+} from '../components/icons';
 
 const PROVIDER_VISUALS = {
   codex: {
@@ -104,7 +20,7 @@ const PROVIDER_VISUALS = {
     tone: 'provider-icon-native',
     viewBox: '0 0 240 300',
     paths: [
-      { d: 'M240 0H0V300H240V0Z', fill: 'white' },
+      { d: 'M240 0H0V300H240V0Z', fill: 'var(--color-bg-secondary)' },
       { d: 'M180 240H60V120H180V240Z', fill: '#CFCECD' },
       { d: 'M180 60H60V240H180V60ZM240 300H0V0H240V300Z', fill: '#211E1E' }
     ]
@@ -126,10 +42,19 @@ const PROVIDER_VISUALS = {
   'github-copilot': {
     title: 'GitHub Copilot',
     tone: 'provider-icon-dark',
-    path: 'M23.922 16.997C23.061 18.492 18.063 22.02 12 22.02 5.937 22.02.939 18.492.078 16.997A.641.641 0 0 1 0 16.741v-2.869a.883.883 0 0 1 .053-.22c.372-.935 1.347-2.292 2.605-2.656.167-.429.414-1.055.644-1.517a10.098 10.098 0 0 1-.052-1.086c0-1.331.282-2.499 1.132-3.368.397-.406.89-.717 1.474-.952C7.255 2.937 9.248 1.98 11.978 1.98c2.731 0 4.767.957 6.166 2.093.584.235 1.077.546 1.474.952.85.869 1.132 2.037 1.132 3.368 0 .368-.014.733-.052 1.086.23.462.477 1.088.644 1.517 1.258.364 2.233 1.721 2.605 2.656a.841.841 0 0 1 .053.22v2.869a.641.641 0 0 1-.078.256Zm-11.75-5.992h-.344a4.359 4.359 0 0 1-.355.508c-.77.947-1.918 1.492-3.508 1.492-1.725 0-2.989-.359-3.782-1.259a2.137 2.137 0 0 1-.085-.104L4 11.746v6.585c1.435.779 4.514 2.179 8 2.179 3.486 0 6.565-1.4 8-2.179v-6.585l-.098-.104s-.033.045-.085.104c-.793.9-2.057 1.259-3.782 1.259-1.59 0-2.738-.545-3.508-1.492a4.359 4.359 0 0 1-.355-.508Zm2.328 3.25c.549 0 1 .451 1 1v2c0 .549-.451 1-1 1-.549 0-1-.451-1-1v-2c0-.549.451-1 1-1Zm-5 0c.549 0 1 .451 1 1v2c0 .549-.451 1-1 1-.549 0-1-.451-1-1v-2c0-.549.451-1 1-1Zm3.313-6.185c.136 1.057.403 1.913.878 2.497.442.544 1.134.938 2.344.938 1.573 0 2.292-.337 2.657-.751.384-.435.558-1.15.558-2.361 0-1.14-.243-1.847-.705-2.319-.477-.488-1.319-.862-2.824-1.025-1.487-.161-2.192.138-2.533.529-.269.307-.437.808-.438 1.578v.021c0 .265.021.562.063.893Zm-1.626 0c.042-.331.063-.628.063-.894v-.02c-.001-.77-.169-1.271-.438-1.578-.341-.391-1.046-.69-2.533-.529-1.505.163-2.347.537-2.824 1.025-.462.472-.705 1.179-.705 2.319 0 1.211.175 1.926.558 2.361.365.414 1.084.751 2.657.751 1.21 0 1.902-.394 2.344-.938.475-.584.742-1.44.878-2.497Z'
+    Component: GithubMark
   },
   crush: { Component: CrushMark, tone: 'provider-icon-crush', title: 'Crush' },
-  'command-code': { Component: CommandCodeMark, tone: 'provider-icon-command-code', title: 'Command Code' }
+  'command-code': { Component: CommandCodeMark, tone: 'provider-icon-command-code', title: 'Command Code' },
+
+  /* Official provider brandings via UI entries */
+  openai: { title: 'OpenAI', tone: 'provider-icon-openai-official', Component: OpenAIMark },
+  github: { title: 'GitHub', tone: 'provider-icon-github-official', Component: GithubMark },
+  google: { title: 'Google', tone: 'provider-icon-google-official', Component: GoogleMark },
+  anthropic: { title: 'Anthropic', tone: 'provider-icon-anthropic-official', Component: AnthropicMark },
+  mistral: { title: 'Mistral', tone: 'provider-icon-mistral-official', Component: MistralMark },
+  langchain: { title: 'LangChain', tone: 'provider-icon-langchain-official', Component: LangChainMark },
+  huggingface: { title: 'Hugging Face', tone: 'provider-icon-huggingface-official', Component: HuggingFaceMark }
 };
 
 function statusTone(status) {
@@ -250,24 +175,22 @@ function CLIProviders() {
               </div>
 
               <div className="provider-meta">
-                <span className={`badge ${statusTone(provider.status)}`}>{String(provider.status).replaceAll('_', ' ')}</span>
-                <label className="switch" onClick={(event) => event.stopPropagation()}>
-                  <input
-                    type="checkbox"
-                    checked={Boolean(provider.enabled)}
-                    onChange={(event) => run(
-                      () => api.updateCliProvider(provider.key, { enabled: event.target.checked }),
-                      event.target.checked ? 'Provider enabled.' : 'Provider disabled.',
-                      provider.key
-                    )}
-                  />
-                  On
-                </label>
+                <Badge tone={statusTone(provider.status)}>{String(provider.status).replaceAll('_', ' ')}</Badge>
+                <SwitchComponent
+                  label="On"
+                  checked={Boolean(provider.enabled)}
+                  onChange={(event) => run(
+                    () => api.updateCliProvider(provider.key, { enabled: event.target.checked }),
+                    event.target.checked ? 'Provider enabled.' : 'Provider disabled.',
+                    provider.key
+                  )}
+                  onClick={(event) => event.stopPropagation()}
+                />
               </div>
 
               <div className="provider-stats">
-                <span className="badge gray">{enabledModels} enabled models</span>
-                <span className="badge gray">{provider.models?.length || 0} total</span>
+                <Badge tone="gray">{enabledModels} enabled models</Badge>
+                <Badge tone="gray">{provider.models?.length || 0} total</Badge>
               </div>
             </div>
           );
@@ -275,7 +198,7 @@ function CLIProviders() {
       </div>
 
       {activeProvider && (
-        <div className="detail-grid" style={{ marginTop: 16 }}>
+        <div className="detail-grid" style={{ marginTop: 18 }}>
           <div className="card">
             <div className="card-header">
               <div>
@@ -284,7 +207,7 @@ function CLIProviders() {
                   {activeProvider.detected_path ? `Detected at ${activeProvider.detected_path}` : 'Not found in PATH. Enter a command manually and test it.'}
                 </p>
               </div>
-              <span className={`badge ${statusTone(activeProvider.status)}`}>{String(activeProvider.status).replaceAll('_', ' ')}</span>
+              <Badge tone={statusTone(activeProvider.status)}>{String(activeProvider.status).replaceAll('_', ' ')}</Badge>
             </div>
 
             <div className="card-body stack">
@@ -398,7 +321,7 @@ function CLIProviders() {
                             <div><strong>{model.display_name || model.model_name}</strong></div>
                             <div className="mono hint">{model.model_name}</div>
                           </td>
-                          <td><span className="badge gray">{model.source}</span></td>
+                          <td><Badge tone="gray">{model.source}</Badge></td>
                           <td>
                             <input
                               type="radio"

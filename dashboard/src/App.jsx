@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { api } from './api';
+import { LoadingPage } from './components/ui';
 import Layout from './components/Layout';
 import AccessControl from './pages/AccessControl';
 import BotConfiguration from './pages/BotConfiguration';
@@ -35,7 +36,7 @@ function AuthGate({ children }) {
   }, []);
 
   if (loading) {
-    return <div className="screen-center">Loading workspace...</div>;
+    return <LoadingPage message="Loading workspace..." />;
   }
 
   if (!session?.authenticated) {

@@ -1,30 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api';
 import { useI18n } from '../i18n';
-
-function Badge({ status }) {
-  const value = String(status || 'unknown');
-  const tone = value.includes('connected') || value.includes('detected') || value.includes('manual')
-    ? 'green'
-    : value.includes('error')
-      ? 'red'
-      : value.includes('not_configured') || value.includes('needs')
-        ? 'amber'
-        : 'gray';
-  return <span className={`badge ${tone}`}>{value.replaceAll('_', ' ')}</span>;
-}
+import { Badge, Metric, Spinner } from '../components/ui';
 
 function Dashboard() {
   const { t } = useI18n();
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
 
   async function load() {
+    setLoading(true);
     try {
       setData(await api.dashboard());
       setError('');
     } catch (err) {
       setError(err.message);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -32,7 +25,32 @@ function Dashboard() {
     load();
   }, []);
 
-  if (!data && !error) return <div className="page">Loading dashboard...</div>;
+  if (loading) {
+    return (
+      <div className="page">
+        <div className="grid grid-4">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="card metric">
+              <div className="metric-label" style={{ background: 'var(--color-bg-tertiary)', height: 12, borderRadius: 4, width: '60%' }} />
+              <div className="metric-value" style={{ background: 'var(--color-bg-tertiary)', height: 32, borderRadius: 4, marginTop: 10, width: '40%' }} />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  function statusBadge(status) {
+    const value = String(status || 'unknown');
+    const tone = value.includes('connected') || value.includes('detected') || value.includes('manual')
+      ? 'green'
+      : value.includes('error')
+        ? 'red'
+        : value.includes('not_configured') || value.includes('needs')
+          ? 'amber'
+          : 'gray';
+    return <Badge tone={tone}>{value.replaceAll('_', ' ')}</Badge>;
+  }
 
   return (
     <div className="page">
@@ -40,44 +58,44 @@ function Dashboard() {
         <div>
           <p className="eyebrow">{t('dashboard.eyebrow')}</p>
           <h1 className="page-title">{t('dashboard.title')}</h1>
-          <p className="page-description">
-            {t('dashboard.description')}
-          </p>
+          <p className="page-description">{t('dashboard.description')}</p>
         </div>
         <div className="toolbar">
           <button className="button" onClick={load}>{t('common.refresh')}</button>
-          <button className="button primary" onClick={() => api.botAction('restart').then(load)}>Restart bot</button>
+          <button className="button primary" onClick={() => api.botAction('restart').then(load)}>
+            Restart bot
+          </button>
         </div>
       </div>
 
-      {error && <div className="alert error">{error}</div>}
+      {error && <div className="alert error" style={{ marginBottom: 16 }}>{error}</div>}
 
       {data && (
         <>
           <div className="grid grid-4">
-            <div className="card metric">
-              <div className="metric-label">Telegram bot</div>
-              <div className="metric-value"><Badge status={data.botStatus?.status} /></div>
-              <div className="metric-note">{data.botStatus?.userCount || 0} allowed users</div>
-            </div>
-            <div className="card metric">
-              <div className="metric-label">Enabled CLI providers</div>
-              <div className="metric-value">{data.enabledProviders?.length || 0}</div>
-              <div className="metric-note">{data.providers?.length || 0} configured providers</div>
-            </div>
-            <div className="card metric">
-              <div className="metric-label">Projects</div>
-              <div className="metric-value">{data.projectCount}</div>
-              <div className="metric-note">available project paths</div>
-            </div>
-            <div className="card metric">
-              <div className="metric-label">Running tasks</div>
-              <div className="metric-value">{data.runningTaskCount}</div>
-              <div className="metric-note">queue integration pending</div>
-            </div>
+            <Metric
+              label="Telegram bot"
+              value={data.botStatus ? <Badge tone={data.botStatus.status === 'connected' ? 'green' : 'amber'}>{data.botStatus.status.replaceAll('_', ' ')}</Badge> : '—'}
+              note={`${data.botStatus?.userCount || 0} allowed users`}
+            />
+            <Metric
+              label="Enabled CLI providers"
+              value={data.enabledProviders?.length || 0}
+              note={`${data.providers?.length || 0} configured providers`}
+            />
+            <Metric
+              label="Projects"
+              value={data.projectCount}
+              note="available project paths"
+            />
+            <Metric
+              label="Running tasks"
+              value={data.runningTaskCount}
+              note="queue integration pending"
+            />
           </div>
 
-          <div className="grid grid-2" style={{ marginTop: 16 }}>
+          <div className="grid grid-2" style={{ marginTop: 18 }}>
             <div className="card">
               <div className="card-header">
                 <div>
@@ -94,7 +112,7 @@ function Dashboard() {
                     {data.providers.map((provider) => (
                       <tr key={provider.key}>
                         <td><strong>{provider.display_name}</strong></td>
-                        <td><Badge status={provider.status} /></td>
+                        <td>{statusBadge(provider.status)}</td>
                         <td className="mono">{provider.command || 'Not set'}</td>
                         <td>{provider.enabledModelCount}</td>
                       </tr>
@@ -116,7 +134,9 @@ function Dashboard() {
                   {(data.recentLogs || []).map((line, index) => (
                     <div className="log-line" key={`${line}-${index}`}>{line}</div>
                   ))}
-                  {(!data.recentLogs || data.recentLogs.length === 0) && <div className="empty">No logs yet.</div>}
+                  {(!data.recentLogs || data.recentLogs.length === 0) && (
+                    <div className="empty">No logs yet.</div>
+                  )}
                 </div>
               </div>
             </div>

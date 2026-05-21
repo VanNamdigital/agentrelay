@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api';
+import { Badge } from '../components/ui';
 
 function Projects() {
   const [projects, setProjects] = useState([]);
@@ -93,7 +94,7 @@ function Projects() {
           </div>
           <div className="card-body stack">
             <form className="form-grid" onSubmit={add}>
-              <label className="field">
+              <label className="field full">
                 <span className="label">Project path</span>
                 <div className="input-action">
                   <input className="input mono" value={form.path} onChange={(event) => setForm({ ...form, path: event.target.value })} placeholder="G:/projects/my-project" disabled={browsing} />
@@ -110,7 +111,7 @@ function Projects() {
                 <input type="checkbox" checked={form.is_default} onChange={(event) => setForm({ ...form, is_default: event.target.checked })} disabled={browsing} />
                 Set as default project
               </label>
-              <div className="toolbar">
+              <div className="toolbar" style={{ gridColumn: '1 / -1' }}>
                 <button className="button" type="button" disabled={browsing || !form.path} onClick={() => form.path && api.testProjectPath(form.path).then((result) => setMessage(result.exists ? 'Path exists.' : 'Path is missing.'))}>Test path</button>
                 <button className="button primary" disabled={browsing}>{browsing ? 'Waiting...' : 'Add project'}</button>
               </div>
@@ -133,8 +134,8 @@ function Projects() {
                   <tr key={project.id}>
                     <td><strong>{project.name}</strong></td>
                     <td className="mono">{project.path}</td>
-                    <td><span className={`badge ${project.exists ? 'green' : 'red'}`}>{project.exists ? 'Exists' : 'Missing'}</span></td>
-                    <td>{project.is_default ? <span className="badge blue">Default</span> : <button className="button" onClick={() => update(project.id, { is_default: true })}>Set default</button>}</td>
+                    <td><Badge tone={project.exists ? 'green' : 'red'}>{project.exists ? 'Exists' : 'Missing'}</Badge></td>
+                    <td>{project.is_default ? <Badge tone="blue">Default</Badge> : <button className="button" onClick={() => update(project.id, { is_default: true })}>Set default</button>}</td>
                     <td><button className="button danger" onClick={() => remove(project.id)}>Delete</button></td>
                   </tr>
                 ))}

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useI18n } from '../i18n';
+import { Spinner } from '../components/ui';
 
 function ChangePassword() {
   const navigate = useNavigate();
@@ -32,10 +33,22 @@ function ChangePassword() {
   return (
     <div className="auth-page">
       <form className="auth-card stack" onSubmit={submit}>
-        <div>
-          <p className="eyebrow">Required setup</p>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{
+            width: 48,
+            height: 48,
+            display: 'inline-grid',
+            placeItems: 'center',
+            borderRadius: 'var(--radius-md)',
+            background: 'linear-gradient(135deg, #0f766e, #0d9488)',
+            color: '#ccfbf1',
+            fontWeight: 900,
+            fontSize: 18,
+            marginBottom: 16
+          }}>AR</div>
+          <p className="eyebrow" style={{ textAlign: 'center', color: 'var(--color-warning)' }}>Required setup</p>
           <h1 className="auth-title">Change default password</h1>
-          <p className="auth-copy">The first login must replace the default admin password before the dashboard opens.</p>
+          <p className="auth-copy" style={{ textAlign: 'center' }}>The first login must replace the default admin password before the dashboard opens.</p>
         </div>
         <label className="field">
           <span className="label">{t('common.language')}</span>
@@ -58,7 +71,9 @@ function ChangePassword() {
           <span className="label">Confirm new password</span>
           <input className="input" type="password" value={form.confirmPassword} onChange={(event) => update('confirmPassword', event.target.value)} />
         </label>
-        <button className="button primary" disabled={loading}>{loading ? 'Saving...' : 'Save password'}</button>
+        <button className="button primary large" style={{ width: '100%' }} disabled={loading}>
+          {loading ? <><Spinner size={14} /> Saving...</> : 'Save password'}
+        </button>
       </form>
     </div>
   );

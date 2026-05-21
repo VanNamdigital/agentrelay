@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useI18n } from '../i18n';
+import { Spinner } from '../components/ui';
 
 function Login() {
   const navigate = useNavigate();
@@ -30,10 +31,22 @@ function Login() {
   return (
     <div className="auth-page">
       <form className="auth-card stack" onSubmit={submit}>
-        <div>
-          <p className="eyebrow">Admin console</p>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{
+            width: 48,
+            height: 48,
+            display: 'inline-grid',
+            placeItems: 'center',
+            borderRadius: 'var(--radius-md)',
+            background: 'linear-gradient(135deg, #172554, #1e3a5f)',
+            color: '#93c5fd',
+            fontWeight: 900,
+            fontSize: 18,
+            marginBottom: 16
+          }}>AR</div>
+          <p className="eyebrow" style={{ textAlign: 'center' }}>Admin console</p>
           <h1 className="auth-title">Sign in to AgentRelay</h1>
-          <p className="auth-copy">Use the default admin account on first boot, then change the password.</p>
+          <p className="auth-copy" style={{ textAlign: 'center' }}>Use the default admin account on first boot, then change the password.</p>
         </div>
         <label className="field">
           <span className="label">{t('common.language')}</span>
@@ -53,7 +66,9 @@ function Login() {
           <input className="input" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoFocus />
           <span className="hint">Default: admin / 123456</span>
         </label>
-        <button className="button primary" disabled={loading}>{loading ? t('auth.signingIn') : t('auth.signIn')}</button>
+        <button className="button primary large" style={{ width: '100%' }} disabled={loading}>
+          {loading ? <><Spinner size={14} /> {t('auth.signingIn')}</> : t('auth.signIn')}
+        </button>
       </form>
     </div>
   );
